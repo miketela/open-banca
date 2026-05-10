@@ -1,8 +1,12 @@
 # Flow: Remap Approval
 
-Qué pasa después de que Judge ordena un remap. El Remapper Agent (Claude vision) propone un patch al `map.json`. Si `confidence ≥ 0.85 AND risk == low` se auto-aplica; sino entra a flujo HITL con TTL de 24 h.
+Qué pasa después de que Judge ordena un remap. El Remapper Agent (Claude vision) propone un patch al `map.json`.
+
+> **v1 — HITL obligatorio.** La rama auto-apply está desactivada en v1. Todos los remaps entran al flujo HITL con TTL de 24 h, sin excepción. `confidence` y `risk` del Remapper se registran como telemetría para la baseline de calibración (90 días). Ver [ADR-0013 Amendment](../adr/0013-amendment-hitl-only-v1.md).
 
 ## Sequence diagram: rama auto-apply
+
+> **Deferred to v1.x — ver [ADR-0013 Amendment](../adr/0013-amendment-hitl-only-v1.md).** Este diagrama documenta el comportamiento futuro; en v1 esta rama no existe. El check `confidence ≥ 0.85 AND risk == low` no activa auto-apply en v1.
 
 ```mermaid
 sequenceDiagram
@@ -23,8 +27,9 @@ sequenceDiagram
     Note over Rem,Bank: 3 - 12 min, $0.05-$0.40 vision
     Rem-->>RW: proposed_patch + confidence + risk + rationale
 
+    Note over RW: v1.x ONLY — condición desactivada en v1
     RW->>RW: chequea confidence ≥ 0.85 AND risk == low
-    Note over RW: sí → auto
+    Note over RW: sí → auto (v1.x únicamente)
     RW->>FS: apply patch + bump version + tag + commit
     RW->>ST: registra map.json nuevo + audit entry (auto_applied=true)
     RW-->>W: complete (new_map_version)
@@ -96,12 +101,14 @@ stateDiagram-v2
 
 ## Reglas de auto-apply
 
-| Confidence | Risk | Decisión |
-|-----------:|------|----------|
-| ≥ 0.85 | low | **auto-apply** |
-| ≥ 0.85 | medium | HITL |
-| ≥ 0.85 | high | HITL |
-| < 0.85 | cualquiera | HITL |
+> **v1 — Auto-apply desactivado.** En v1, todos los casos van por HITL independientemente de `confidence` y `risk`. La tabla siguiente refleja el comportamiento objetivo de v1.x (pendiente de calibración).
+
+| Confidence | Risk | Decisión v1 | Decisión v1.x (objetivo) |
+|-----------:|------|-------------|--------------------------|
+| ≥ 0.85 | low | **HITL** (telemetría) | auto-apply (si precision >= 0.95) |
+| ≥ 0.85 | medium | HITL | HITL |
+| ≥ 0.85 | high | HITL | HITL |
+| < 0.85 | cualquiera | HITL | HITL |
 
 Si el banco tiene `community/` map (no oficial firmado), se fuerza HITL siempre, sin importar confidence/risk.
 
@@ -166,3 +173,4 @@ Si linter rechaza: proposal pasa a `failed` (no `applied`), webhook `job.failed`
 - Detección: [`03-flows/remap-detection.md`](./remap-detection.md)
 - API endpoints: [`02-components/api.md`](../02-components/api.md) sección `/maps/{bank}/proposals`
 - ADR threshold: `adr/0013-confidence-threshold-remap.md` (existente)
+- ADR-0013 Amendment v1 HITL-only: [`../adr/0013-amendment-hitl-only-v1.md`](../adr/0013-amendment-hitl-only-v1.md)

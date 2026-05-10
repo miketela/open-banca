@@ -25,6 +25,8 @@ El Judge **nunca toca el browser** ni ejecuta código. Sólo razona sobre eviden
 
 ## Flujo de decisión
 
+> **v1 — Auto-apply path DEFERRED.** La rama `confidence >= 0.85 AND risk == low → Auto-execute` está desactivada en v1. Todos los remaps van por HITL. Ver [ADR-0013 Amendment](../adr/0013-amendment-hitl-only-v1.md).
+
 ```mermaid
 flowchart TD
     Start([BreakageEvent + evidencia]) --> Gather[Construye prompt:\ncausa + step + map fragment + history]
@@ -33,11 +35,10 @@ flowchart TD
     Parse --> Cap{Pasa caps?\ncost / attempts}
     Cap -->|no| ForceAbort[Override: abort_and_alert]
     Cap -->|si| Route{confidence >= 0.85\nAND risk == low?}
-    Route -->|si| Auto[Auto-execute decision]
+    Route -->|si — DEFERRED v1.x| HITL
     Route -->|no| HITL[Webhook job.remap_proposed\no job.human_required]
-    Auto --> Out([Workflow continua])
     HITL --> Wait([Pausa esperando approval])
-    ForceAbort --> Out
+    ForceAbort --> Wait
 ```
 
 ## Decisiones posibles
@@ -92,21 +93,20 @@ PydanticAI fuerza structured output con validators que rechazan combinaciones in
 
 ## Decision routing
 
+> **v1 — Auto-apply path deferred to v1.x.** El nodo `Th → si → Decide` está desactivado. En v1, `partial_remap` y `full_remap` siempre emiten webhook y esperan HITL, independientemente de `confidence` y `risk`. Los valores de `confidence` y `risk` se persisten para instrumentación (baseline de calibración, 90 días). Ver [ADR-0013 Amendment](../adr/0013-amendment-hitl-only-v1.md).
+
 ```mermaid
 flowchart TD
     JD[Decision + confidence + risk] --> CB{circuit breaker\nactivo?}
     CB -->|si| Block[Override: abort_and_alert]
     CB -->|no| Cost{LLM budget\nrestante?}
     Cost -->|no| Block
-    Cost -->|si| Th{conf >= 0.85\nAND risk == low?}
-    Th -->|si| Decide{Tipo de decision}
+    Cost -->|si| Th{conf >= 0.85\nAND risk == low?\nv1 — siempre NO}
+    Th -->|si — DEFERRED v1.x| Webhook
     Th -->|no| Webhook[Emit job.remap_proposed\no job.human_required]
 
-    Decide -->|retry_now / retry_backoff| AutoRetry[Workflow reintenta]
-    Decide -->|partial_remap / full_remap| AutoRemap[Invoca Remapper\nluego dry-run]
-    Decide -->|abort_and_alert| AutoAbort[Marca failed + alerta]
-    Decide -->|human_required| Webhook
-
+    Decide_retry -->|retry_now / retry_backoff| AutoRetry[Workflow reintenta]
+    Block --> Done[Marca failed + alerta]
     Webhook --> Pause[Workflow pausa esperando\nPOST approval endpoint]
 ```
 
@@ -129,6 +129,7 @@ Ver [ADR-0020 — PII redact at LLM boundary](../adr/0020-pii-redact-llm-boundar
 ## Referencias
 
 - ADR-0013 confidence threshold: [`../adr/0013-confidence-threshold-remap.md`](../adr/0013-confidence-threshold-remap.md).
+- ADR-0013 Amendment — v1 HITL-only: [`../adr/0013-amendment-hitl-only-v1.md`](../adr/0013-amendment-hitl-only-v1.md).
 - Validator que alimenta evidencia: [`validator-agent.md`](./validator-agent.md).
 - Mapper / Remapper que ejecutan acción: [`mapper-agent.md`](./mapper-agent.md).
 - Cost guardrails: [`../05-operations/cost-guardrails.md`](../05-operations/cost-guardrails.md).

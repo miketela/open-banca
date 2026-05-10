@@ -2,6 +2,8 @@
 
 Cómo el sistema detecta que el flujo del banco cambió y decide qué hacer. Triggered por cualquier `BreakageEvent` emitido por el Scraper Runner. Resuelve a una decisión Judge: `retry / partial_remap / full_remap / abort / human_required`.
 
+> **v1 — HITL obligatorio para todos los remaps.** Cuando Judge decide `partial_remap` o `full_remap`, el flow siempre continúa por HITL (webhook `job.remap_proposed` + pausa esperando approval del operador). La rama auto-apply está desactivada. `confidence` y `risk` se registran sólo como telemetría para calibración. Ver [ADR-0013 Amendment](../adr/0013-amendment-hitl-only-v1.md).
+
 ## Disparadores de detección
 
 ```mermaid
@@ -31,8 +33,8 @@ flowchart TD
 
     J --> Decision{Decisión del Judge}
     Decision -->|retry| Retry[Workflow re-ejecuta el step con backoff]
-    Decision -->|partial_remap| PR[Lanza RemapBankWorkflow scope=patch]
-    Decision -->|full_remap| FR[Lanza RemapBankWorkflow scope=full]
+    Decision -->|partial_remap| PR[Lanza RemapBankWorkflow scope=patch\nv1: siempre HITL]
+    Decision -->|full_remap| FR[Lanza RemapBankWorkflow scope=full\nv1: siempre HITL]
     Decision -->|abort| Ab[Workflow → failed]
     Decision -->|human_required| HR[Webhook job.human_required + pausa]
 ```
@@ -105,8 +107,8 @@ Tabla heurística usada por Judge como prior. La decisión final puede divergir 
 ## Outputs
 
 - `BreakageEvent` persistido en storage para análisis.
-- `JudgeDecision` persistida (`decision`, `confidence`, `risk`, `rationale`).
-- Si `partial_remap`/`full_remap` → input para [`03-flows/remap-approval.md`](./remap-approval.md).
+- `JudgeDecision` persistida (`decision`, `confidence`, `risk`, `rationale`) — `confidence` y `risk` son telemetría en v1, no gates de auto-apply.
+- Si `partial_remap`/`full_remap` → siempre input para [`03-flows/remap-approval.md`](./remap-approval.md) vía HITL (v1).
 - Métricas: `breakage_total` por causa, `judge_decision_total` por tipo, `remaps_blocked_by_cap_total`.
 
 ## Referencias
@@ -114,4 +116,5 @@ Tabla heurística usada por Judge como prior. La decisión final puede divergir 
 - Aprobación de remap: [`03-flows/remap-approval.md`](./remap-approval.md)
 - Recovery patterns: [`03-flows/error-recovery.md`](./error-recovery.md)
 - ADR auto-remap threshold: `adr/0013-confidence-threshold-remap.md` (existente)
+- ADR-0013 Amendment v1 HITL-only: [`../adr/0013-amendment-hitl-only-v1.md`](../adr/0013-amendment-hitl-only-v1.md)
 - Scraper Runner: [`02-components/scraper-runner.md`](../02-components/scraper-runner.md)
