@@ -299,6 +299,37 @@ def test_dedup_level3_within_date_window(engine, account_id, account_b_id):
     assert len(result.transfer_pairs) == 1
 
 
+def test_dedup_level3_transfer_across_batches(engine, account_id, account_b_id, conn):
+    """Transfer sides arriving in separate ingest() calls are still linked.
+
+    This covers the incremental-scrape scenario where account A is scraped
+    on one run and account B on the next.
+    """
+    posted = datetime(2024, 3, 10, 9, 0, 0, tzinfo=UTC)
+    debit = _make_tx(account_id, amount=Decimal("-200.00"), description="Transfer out", posted_at=posted)
+    credit = _make_tx(account_b_id, amount=Decimal("200.00"), description="Transfer in", posted_at=posted)
+
+    # Ingest debit side first (simulates account A scraped earlier).
+    result1 = engine.ingest([debit])
+    assert len(result1.new) == 1
+    assert len(result1.transfer_pairs) == 0  # no counterpart yet
+
+    # Ingest credit side in a separate call (simulates account B scraped later).
+    result2 = engine.ingest([credit])
+    assert len(result2.new) == 1
+    assert len(result2.transfer_pairs) == 1
+
+    # Verify both DB rows are cross-linked.
+    debit_row = conn.execute(
+        "SELECT transfer_match_id FROM transactions WHERE id = ?", (debit.id,)
+    ).fetchone()
+    credit_row = conn.execute(
+        "SELECT transfer_match_id FROM transactions WHERE id = ?", (credit.id,)
+    ).fetchone()
+    assert debit_row is not None and debit_row[0] == credit.id
+    assert credit_row is not None and credit_row[0] == debit.id
+
+
 # ── Cursor (incremental) ──────────────────────────────────────────────────────
 
 

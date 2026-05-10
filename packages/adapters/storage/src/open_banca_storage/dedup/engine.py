@@ -2,50 +2,56 @@
 
 Algorithm (strict order):
 
-1. **Level 1 — embedded_id**: if ``Transaction.embedded_id`` is not None and
+1. **Level 1 - embedded_id**: if ``Transaction.embedded_id`` is not None and
    the value exists in ``dedup_index`` (level='embedded'), skip the transaction
    (it is already persisted with the bank-supplied stable ID).
 
-2. **Level 2 — fingerprint**: compute ``compute_fingerprint(...)`` and check
+2. **Level 2 - fingerprint**: compute ``compute_fingerprint(...)`` and check
    ``dedup_index`` for a hit.  On hit, skip.  On miss, insert the transaction
    and record the fingerprint in ``dedup_index``.
 
-3. **Level 3 — fuzzy transfer**: after all transactions have been processed
-   through levels 1-2, run ``TransferMatcher`` over the *newly inserted*
-   transactions plus the recent window of existing transactions.  For each
-   matched pair, update ``transfer_match_id`` on both sides.
+3. **Level 3 - fuzzy transfer**: for each newly inserted transaction, query the
+   DB for an unlinked counterpart in *another* account with the opposite sign,
+   same absolute amount, and posting date within the ±3-day window.  This
+   cross-DB lookup ensures transfers are matched even when the two sides arrive
+   in *separate* ``ingest()`` calls (e.g. account A scraped today, account B
+   tomorrow on incremental runs).  In-batch matching also handles the common
+   case where both sides arrive together.
 
-The engine operates directly on the SQLite connection (same DBAPI2 object
-used by ``SqliteJobStore``).  It does NOT own the connection lifecycle.
+Level 3 does NOT deduplicate (does not discard either transaction).  It only
+annotates both rows so downstream consumers can identify and exclude
+double-counting.
 
 Cursor management (Story 2 AC):
 
-- ``get_cursor(account_id)``: returns the most-recently-seen ``posted_at``
-  for that account, stored in a dedicated ``account_cursors`` concept.
-  NOTE: the existing ``cursors`` table is keyed on ``bank``.  The engine
-  augments per-account tracking via the ``transactions`` table directly
-  (``MAX(posted_at)`` query) so it can serve as a source-of-truth without
-  requiring schema changes.
-- ``effective_since(account_id)``: returns cursor minus 3-day buffer for
-  use in window queries (covers pending-clearing movements).
+- ``get_cursor(account_id)``: returns ``MAX(posted_at)`` from the
+  ``transactions`` table for the given account.  Deliberately derived from
+  the transactions table rather than a separate cursor row so it always
+  reflects actual persisted data, and because the existing ``cursors`` table
+  is keyed by bank (not account).  Uses ``idx_txn_account_posted`` (O(log n)).
+- ``effective_since(account_id)``: returns ``cursor - 3 days`` for use in
+  window queries (covers pending-clearing movements that change date between
+  runs).
 """
 
 from __future__ import annotations
 
 import logging
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from open_banca_domain.entities.transaction import Transaction
 from open_banca_storage.dedup.fingerprint import compute_fingerprint
-from open_banca_storage.dedup.transfer_matcher import TransferMatcher
 
 logger = logging.getLogger(__name__)
 
 # Buffer for incremental window queries (Story 2 AC).
 CURSOR_BUFFER_DAYS: int = 3
+
+# Fuzzy transfer window for cross-account matching.
+_TRANSFER_WINDOW_DAYS: int = 3
 
 
 @dataclass
@@ -55,7 +61,12 @@ class IngestResult:
     Attributes:
         new: Transactions that were inserted for the first time.
         duplicates: Transactions that were skipped (already in storage).
-        transfer_pairs: Pairs of (debit_tx, credit_tx) that were linked.
+        transfer_pairs: Pairs of (debit_tx_id, credit_tx_id) that were linked.
+            Note: these are the *original* Transaction objects passed to
+            ``ingest()``.  The ``transfer_match_id`` field on each object
+            will still be None because Pydantic models are frozen; the DB
+            rows have been updated in place.  Callers that need the updated
+            state should reload from the repository.
     """
 
     new: list[Transaction] = field(default_factory=list)
@@ -73,7 +84,6 @@ class DedupEngine:
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
-        self._matcher = TransferMatcher()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -82,7 +92,10 @@ class DedupEngine:
 
         1. Level 1 (embedded_id): skip if bank-supplied ID already indexed.
         2. Level 2 (fingerprint): skip if deterministic hash already indexed.
-        3. Level 3 (transfer): link debit/credit pairs across accounts.
+        3. Level 3 (transfer): for each new transaction, query the DB for an
+           unlinked counterpart in another account (opposite sign, same amount,
+           date within ±3 days).  This covers both same-batch and cross-batch
+           transfer detection.
 
         Returns:
             ``IngestResult`` with new, duplicates, and transfer_pairs.
@@ -121,22 +134,37 @@ class DedupEngine:
             result.new.append(tx)
 
         # ── Level 3: fuzzy transfer matching ─────────────────────────────
-        if result.new:
-            pairs = self._matcher.find_pairs(result.new)
-            for debit, credit in pairs:
-                self._link_transfer_pair(debit.id, credit.id)
-                result.transfer_pairs.append((debit, credit))
-            logger.debug(
-                "L3 transfer: %d new, %d pairs", len(result.new), len(result.transfer_pairs)
-            )
+        # For each newly inserted transaction, query the DB for an unlinked
+        # counterpart row in a *different* account that matches on amount and
+        # date window.  This handles both same-batch and cross-batch cases.
+        for tx in result.new:
+            if tx.amount == Decimal("0"):
+                continue
+            counterpart_id = self._find_transfer_counterpart(tx)
+            if counterpart_id is not None:
+                self._link_transfer_pair(tx.id, counterpart_id)
+                # Retrieve counterpart transaction for the result tuple.
+                counterpart = self._load_tx_by_id(counterpart_id)
+                if counterpart is not None:
+                    # Debit first, credit second.
+                    if tx.amount < Decimal("0"):
+                        result.transfer_pairs.append((tx, counterpart))
+                    else:
+                        result.transfer_pairs.append((counterpart, tx))
+                    logger.debug("L3 linked: %s <-> %s", tx.id, counterpart_id)
 
         return result
 
     def get_cursor(self, account_id: str) -> datetime | None:
         """Return the latest ``posted_at`` for *account_id*, or None.
 
-        Queries the ``transactions`` table directly to derive the cursor,
-        so it always reflects persisted data.
+        Derived directly from ``MAX(posted_at)`` in the ``transactions`` table
+        so it always reflects persisted data.  Uses the
+        ``idx_txn_account_posted`` composite index (O(log n)).
+
+        Note: the existing ``cursors`` table is keyed by bank, not account.
+        This method deliberately does not write to that table — it derives
+        the per-account cursor from the transactions themselves.
         """
         row = self._conn.execute(
             "SELECT MAX(posted_at) FROM transactions WHERE account_id = ?",
@@ -153,7 +181,7 @@ class DedupEngine:
         date or amount between runs are re-processed through dedup (and
         upserted if they differ).
 
-        Returns None if no cursor exists (first run — full historical import).
+        Returns None if no cursor exists (first run - full historical import).
         """
         cursor = self.get_cursor(account_id)
         if cursor is None:
@@ -178,8 +206,77 @@ class DedupEngine:
         ).fetchone()
         return row is not None
 
+    def _find_transfer_counterpart(self, tx: Transaction) -> str | None:
+        """Query for an unlinked counterpart row for *tx* in another account.
+
+        Criteria:
+        - Different account.
+        - Opposite sign (debit matched with credit).
+        - Same absolute amount.
+        - ``transfer_match_id IS NULL`` (not already linked).
+        - Posting date within ±TRANSFER_WINDOW_DAYS.
+
+        Returns the UUID of the first matching transaction, or None.
+        """
+        abs_amount = str(abs(tx.amount))
+        # CAST(amount AS REAL) comparison avoids TEXT collation issues.
+        # The sign filter: if tx.amount < 0 (debit), counterpart amount > 0.
+        if tx.amount < Decimal("0"):
+            sign_filter = "CAST(amount AS REAL) > 0"
+        else:
+            sign_filter = "CAST(amount AS REAL) < 0"
+
+        window_days = _TRANSFER_WINDOW_DAYS
+        row = self._conn.execute(
+            f"""
+            SELECT id FROM transactions
+            WHERE account_id != ?
+              AND ABS(CAST(amount AS REAL)) = CAST(? AS REAL)
+              AND {sign_filter}
+              AND transfer_match_id IS NULL
+              AND ABS(
+                  CAST(strftime('%s', posted_at) AS INTEGER) -
+                  CAST(strftime('%s', ?) AS INTEGER)
+              ) <= ?
+            ORDER BY posted_at ASC
+            LIMIT 1
+            """,
+            (
+                tx.account_id,
+                abs_amount,
+                tx.posted_at.isoformat(),
+                window_days * 86400,
+            ),
+        ).fetchone()
+        return row[0] if row else None
+
+    def _load_tx_by_id(self, tx_id: str) -> Transaction | None:
+        """Load a minimal Transaction from the DB by UUID."""
+        row = self._conn.execute(
+            """
+            SELECT id, account_id, posted_at, value_at, amount, currency,
+                   description, fingerprint_hash, embedded_id, transfer_match_id
+            FROM transactions WHERE id = ?
+            """,
+            (tx_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return Transaction(
+            id=row[0],
+            account_id=row[1],
+            posted_at=datetime.fromisoformat(row[2]),
+            value_at=datetime.fromisoformat(row[3]),
+            amount=Decimal(row[4]),
+            currency=row[5],
+            description=row[6],
+            fingerprint_hash=row[7],
+            embedded_id=row[8],
+            transfer_match_id=row[9],
+        )
+
     def _insert_transaction(self, tx: Transaction) -> None:
-        """Insert a transaction row (INSERT OR IGNORE — idempotent on UUID)."""
+        """Insert a transaction row (INSERT OR IGNORE - idempotent on UUID)."""
         self._conn.execute(
             """
             INSERT OR IGNORE INTO transactions (
@@ -228,8 +325,7 @@ class DedupEngine:
         self._conn.commit()
 
     def _link_transfer_pair(self, debit_id: str, credit_id: str) -> None:
-        """Set transfer_match_id on both sides and index the fuzzy link."""
-        # Update both transaction rows.
+        """Set transfer_match_id on both sides."""
         self._conn.execute(
             "UPDATE transactions SET transfer_match_id = ? WHERE id = ?",
             (credit_id, debit_id),
@@ -238,24 +334,4 @@ class DedupEngine:
             "UPDATE transactions SET transfer_match_id = ? WHERE id = ?",
             (debit_id, credit_id),
         )
-        # Record in dedup_index (level='fuzzy') — one entry per direction.
-        link_key_debit = f"transfer:{debit_id}:{credit_id}"
-        link_key_credit = f"transfer:{credit_id}:{debit_id}"
-        fuzzy_id = str(uuid.uuid4())
-        self._conn.execute(
-            """
-            INSERT OR REPLACE INTO dedup_index (fingerprint, account_id, transaction_id, level)
-            VALUES (?, (SELECT account_id FROM transactions WHERE id = ?), ?, 'fuzzy')
-            """,
-            (link_key_debit, debit_id, debit_id),
-        )
-        del fuzzy_id  # only needed if we wanted a separate row UUID
-        self._conn.execute(
-            """
-            INSERT OR REPLACE INTO dedup_index (fingerprint, account_id, transaction_id, level)
-            VALUES (?, (SELECT account_id FROM transactions WHERE id = ?), ?, 'fuzzy')
-            """,
-            (link_key_credit, credit_id, credit_id),
-        )
         self._conn.commit()
-        logger.debug("L3 linked: %s <-> %s", debit_id, credit_id)
