@@ -1,0 +1,37 @@
+{
+  "name": "banco-general",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/banks/banco_general/src",
+  "tags": [
+    "scope:banco-general",
+    "layer:bank"
+  ],
+  "implicitDependencies": [
+    "application",
+    "domain"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check packages/banks/banco_general",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pyrefly check packages/banks/banco_general/src",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest packages/banks/banco_general/tests -v",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

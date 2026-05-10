@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/tests/**",
+      "!{projectRoot}/**/*.spec.py",
+      "!{projectRoot}/**/*.test.py"
+    ],
+    "sharedGlobals": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/nx.json"]
+  },
+  "targetDefaults": {
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/pyproject.toml"]
+    },
+    "typecheck": {
+      "cache": true,
+      "dependsOn": [],
+      "inputs": ["default", "{workspaceRoot}/pyproject.toml"]
+    },
+    "test": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["default", "{workspaceRoot}/pyproject.toml"]
+    }
+  },
+  "plugins": [
+    {
+      "plugin": "@nxlv/python",
+      "options": {
+        "packageManager": "uv"
+      }
+    }
+  ],
+  "sync": {
+    "globalGenerators": ["@nxlv/python:pkg-sync"]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "llm",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/adapters/llm/src",
+  "tags": [
+    "scope:llm",
+    "layer:adapter"
+  ],
+  "implicitDependencies": [
+    "application",
+    "domain"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check packages/adapters/llm",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pyrefly check packages/adapters/llm/src",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest packages/adapters/llm/tests -v",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

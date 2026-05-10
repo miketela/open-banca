@@ -1,0 +1,16 @@
+{
+  "name": "open-banca",
+  "version": "0.1.0",
+  "description": "Self-hosted API for automated bank data capture in Panama",
+  "license": "AGPL-3.0",
+  "private": true,
+  "scripts": {
+    "lint": "nx run-many --target=lint --all",
+    "typecheck": "nx run-many --target=typecheck --all",
+    "test": "nx run-many --target=test --all"
+  },
+  "devDependencies": {
+    "nx": "^20.0.0",
+    "@nxlv/python": "^20.0.0"
+  }
+}
