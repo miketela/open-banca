@@ -1,1 +1,2 @@
-# open-banca: Application layer: use cases, depends only on domain
+"""open-banca application — use cases."""
+from __future__ import annotations

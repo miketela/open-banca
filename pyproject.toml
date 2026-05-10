@@ -43,7 +43,7 @@ ignore = [
     "ANN401",  # Dynamically typed expressions (Any)
     "E501",    # line too long (handled by formatter)
 ]
-per-file-ignores = { "**/__init__.py" = ["F401", "ANN"], "**/tests/**" = ["ANN", "S101", "RUF100"] }
+per-file-ignores = { "**/__init__.py" = ["F401", "ANN"], "**/tests/**" = ["ANN", "S101", "RUF100", "B017"] }
 
 [tool.ruff.lint.isort]
 known-first-party = [

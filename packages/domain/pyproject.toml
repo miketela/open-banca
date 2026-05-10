@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Domain layer: entities, value objects, and ports (pure interfaces)"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "pydantic>=2.7",
+]
 
 [build-system]
 requires = ["hatchling"]

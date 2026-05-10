@@ -151,6 +151,16 @@ source = { editable = "packages/adapters/api" }
 name = "open-banca-application"
 version = "0.1.0"
 source = { editable = "packages/application" }
+dependencies = [
+    { name = "open-banca-domain" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "open-banca-domain", editable = "packages/domain" },
+    { name = "pydantic", specifier = ">=2.7" },
+]
 
 [[package]]
 name = "open-banca-banco-general"
@@ -166,6 +176,12 @@ source = { editable = "packages/adapters/browser" }
 name = "open-banca-domain"
 version = "0.1.0"
 source = { editable = "packages/domain" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
 name = "open-banca-llm"
