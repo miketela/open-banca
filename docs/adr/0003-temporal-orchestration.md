@@ -85,6 +85,10 @@ El operador debe:
 
 La doc de operaciones (`05-operations/`) cubre detalle de runbook, tuning y backup.
 
+## Cross-references
+
+- **ADR-0019** — [BrowserSidecar](./0019-browser-sidecar-otp.md): el mecanismo concreto que hace ejecutable la garantía "crash del worker durante OTP pause no pierde el job" (punto 2 del Context y Consequences > Positivas). La activity `OTPSignalAwaitActivity` mantiene el slot Temporal; el sidecar mantiene la conexión CDP.
+
 ## Status
 
 Accepted (2026-05-09)
