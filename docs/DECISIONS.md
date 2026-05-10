@@ -52,7 +52,7 @@ Documento ancla con todas las decisiones tomadas durante el design dialogue inic
 
 - **Unificado con discriminator `account_type`** ([ADR-0012](./adr/0012-unified-account-schema.md)).
 - Tipos: `savings`, `checking`, `credit_card`. (Préstamos en v2.)
-- Campos comunes + payload específico por tipo (`credit_card` agrega `credit_limit`, `available_credit`, `cut_date`, `min_payment`).
+- Campos comunes + payload específico por tipo. `credit_card` agrega `credit_limit`, `available_credit`, `cut_date`, `min_payment`, `payment_due_date`, `statement_balance` (extendido durante synthesis pass para reflejar lo modelado en ADR-0012).
 
 ## Dedup
 
@@ -93,6 +93,7 @@ Documento ancla con todas las decisiones tomadas durante el design dialogue inic
 - Max **$0.50 LLM cost por scrape job** (DeepSeek hace esto trivial; cap más alto si Mapper/Remapper corren con Claude).
 - Max **3 remap attempts por banco por 24h**.
 - Max **2 logins fallidos consecutivos** → circuit breaker 1h por banco/cuenta.
+- Max **1 mapping run por banco por 24h** (defensivo, override por config).
 - Token budget per agent per job, abort si excede.
 
 ## Browser session
