@@ -133,8 +133,106 @@ Garantías:
 | Firma | cosign sign de la imagen final |
 | Tag policy | inmutable por digest, no `:latest` en producción |
 
+## docker-socket-proxy — golden config (REQ-018, P0)
+
+El `temporal-worker` nunca accede a `/var/run/docker.sock` directamente. Habla con
+`docker-socket-proxy` en `tcp://docker-socket-proxy:2375` (red interna `open-banca-internal`).
+Decisión arquitectural: [ADR-0009](../adr/0009-docker-sandbox-per-job.md) §Sandbox manager.
+
+### Tabla de endpoints
+
+| Categoría | Variable de entorno | Valor | Endpoints habilitados | Razón |
+|-----------|--------------------|---------|-----------------------|-------|
+| Containers | `CONTAINERS` | `1` | `GET /containers/json`, `GET /containers/{id}/json`, `GET /containers/{id}/logs` | Listar, inspeccionar y leer logs del sandbox |
+| Images | `IMAGES` | `1` | `GET /images/json` | Verificar imagen sandbox disponible |
+| Networks | `NETWORKS` | `1` | `GET /networks` | Listar redes efímeras por job |
+| POST actions | `POST` | `1` | `POST /containers/create`, `/start`, `/kill`, `/stop`, `/wait`, `/remove` | Lifecycle completo del sandbox container |
+| Build | `BUILD` | `0` | `POST /build` | **DENIED** — RCE directo en imagen del host |
+| Commit | `COMMIT` | `0` | `POST /commit` | **DENIED** — persistir estado comprometido |
+| Configs | `CONFIGS` | `0` | `/configs` (Swarm) | **DENIED** — Swarm no usado |
+| Exec | `EXEC` | `0` | `POST /containers/{id}/exec` | **DENIED** — superficie RCE principal (T14) |
+| Nodes | `NODES` | `0` | `/nodes` (Swarm) | **DENIED** — Swarm no usado |
+| Plugins | `PLUGINS` | `0` | `POST /plugins/pull` | **DENIED** — código arbitrario en daemon |
+| Secrets | `SECRETS` | `0` | `/secrets` (Swarm) | **DENIED** — fuga de credenciales |
+| Services | `SERVICES` | `0` | `POST /services/create` | **DENIED** — escalación de privilegios Swarm |
+| Swarm | `SWARM` | `0` | `POST /swarm/init` | **DENIED** — control total del cluster |
+| Tasks | `TASKS` | `0` | `/tasks` (Swarm) | **DENIED** — Swarm no usado |
+| Volumes | `VOLUMES` | `0` | `POST /volumes/create` | **DENIED** — container escape via bind mount (T14) |
+
+### Configuración canónica en docker-compose.yml
+
+```yaml
+docker-socket-proxy:
+  image: tecnativa/docker-socket-proxy:latest
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+  environment:
+    CONTAINERS: "1"
+    IMAGES: "1"
+    NETWORKS: "1"
+    POST: "1"
+    BUILD: "0"
+    COMMIT: "0"
+    CONFIGS: "0"
+    EXEC: "0"
+    NODES: "0"
+    PLUGINS: "0"
+    SECRETS: "0"
+    SERVICES: "0"
+    SWARM: "0"
+    TASKS: "0"
+    VOLUMES: "0"
+  networks:
+    - open-banca-internal   # nunca exponer al host ni a open-banca-public
+  deploy:
+    resources:
+      limits:
+        cpus: "0.5"
+        memory: 256M
+  restart: unless-stopped
+```
+
+El `temporal-worker` declara `DOCKER_HOST: "tcp://docker-socket-proxy:2375"`.
+No monta `/var/run/docker.sock` directamente.
+
+### CVE y estado de seguridad de tecnativa/docker-socket-proxy
+
+- No CVEs críticos conocidos contra el proxy en sí hasta 2026-05.
+- La imagen usa Alpine + socat/HAProxy internamente; superficie mínima.
+- Operadores de producción deben pinear por digest SHA256 en lugar de `:latest`
+  y correr Trivy en el pipeline:
+  ```bash
+  trivy image tecnativa/docker-socket-proxy:latest --severity HIGH,CRITICAL
+  ```
+- El proxy no requiere privilegios especiales más allá del bind mount del socket.
+
+### Smoke tests (CI)
+
+Los tests de integración verifican el comportamiento del proxy contra un daemon real.
+Se ubican en `packages/adapters/sandbox/tests/test_socket_proxy.py`.
+
+```bash
+# Con docker-socket-proxy corriendo:
+docker compose up -d docker-socket-proxy
+OPEN_BANCA_DOCKER_INTEGRATION=1 uv run pytest \
+    packages/adapters/sandbox/tests/test_socket_proxy.py -v
+```
+
+Los tests validan:
+
+- `POST /{ver}/containers/{id}/exec` → 403 (EXEC blocked)
+- `POST /{ver}/build` → 403 (BUILD blocked)
+- `GET /{ver}/secrets` → 403 (SECRETS blocked)
+- `POST /{ver}/services/create` → 403 (SERVICES blocked)
+- `POST /{ver}/volumes/create` → 403 (VOLUMES blocked)
+- `GET /{ver}/containers/json` → no 403 (CONTAINERS allowed)
+- `POST /{ver}/containers/create` → no 403 (POST+CONTAINERS allowed)
+- `POST /{ver}/containers/{id}/start` → no 403 (POST+CONTAINERS allowed)
+- `GET /{ver}/images/json` → no 403 (IMAGES allowed)
+- `GET /{ver}/networks` → no 403 (NETWORKS allowed)
+
 ## Riesgos residuales
 
 - **0-day kernel** que escape seccomp + AppArmor: gVisor/Firecracker postergado a v2.
-- **docker-socket-proxy mal configurado**: smoke test en CI debe intentar endpoints prohibidos (e.g. `volumes/create` con bind del host) y verificar 403.
+- **docker-socket-proxy mal configurado**: mitigado por golden config documentada y smoke tests en CI (`OPEN_BANCA_DOCKER_INTEGRATION=1`). Ver T14 en threat model.
 - **Banco que sirve subdominio user-controlled**: el allowlist por dominio es coarse; ver T05/T06 en threat model.

@@ -1,0 +1,267 @@
+# docker-compose.yml — open-banca production stack
+#
+# Levanta el stack completo: api, temporal, workers, postgres, y docker-socket-proxy.
+# Langfuse opcional via `--profile langfuse`.
+#
+# Uso:
+#   docker compose up -d
+#   docker compose --profile langfuse up -d   # incluye Langfuse
+#   docker compose down
+#   docker compose config --quiet             # validar sin daemon
+#
+# Requerimientos pre-arranque:
+#   Ver docs/05-operations/deployment.md § Checklist de seguridad de memoria
+#
+# REQ-018: docker-socket-proxy (P0) — temporal-worker habla con el proxy en
+#   tcp://docker-socket-proxy:2375, nunca con /var/run/docker.sock directamente.
+#   Endpoints permitidos: containers list/create/start/kill/wait/inspect/logs,
+#   images list.  Todo lo demás → 403 (BUILD, EXEC, SECRETS, SWARM, etc.)
+#
+# CVE notes (tecnativa/docker-socket-proxy):
+#   No CVEs críticos conocidos hasta 2025-05.  La imagen no expone el socket
+#   al host — el proxy escucha únicamente en la red interna open-banca-internal.
+#   Imagen pinada a :latest; operadores de producción deben pinear por digest
+#   con Trivy scan en pipeline (ver docs/04-security/sandbox.md §Hardening imagen).
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # docker-socket-proxy — minimiza blast radius del socket Docker
+  # REQ-018 golden config — NO modificar allowlist sin revisar threat-model T14
+  # ---------------------------------------------------------------------------
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: open-banca-docker-socket-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # --- ALLOWED: mínimo necesario para spawn/manage sandbox containers ---
+      CONTAINERS: "1"   # GET  /containers/json, /containers/{id}/json, /containers/{id}/logs
+      IMAGES: "1"       # GET  /images/json  (pull ya no es necesario en runtime)
+      NETWORKS: "1"     # GET  /networks (worker crea redes efímeras vía SDK)
+      POST: "1"         # POST /containers/create, /containers/{id}/start,
+                        #      /containers/{id}/kill, /containers/{id}/wait,
+                        #      /containers/{id}/stop, /containers/{id}/remove
+      # --- DENIED: todo lo que no está en la lista anterior es 0 por defecto ---
+      # Explicitamos los más peligrosos para documentar la decisión (T14):
+      BUILD: "0"        # DENY  POST /build — RCE directo en el host
+      COMMIT: "0"       # DENY  POST /commit
+      CONFIGS: "0"      # DENY  /configs (Swarm)
+      EXEC: "0"         # DENY  POST /exec — superficie RCE principal
+      NODES: "0"        # DENY  /nodes (Swarm)
+      PLUGINS: "0"      # DENY  /plugins
+      SECRETS: "0"      # DENY  /secrets (Swarm)
+      SERVICES: "0"     # DENY  /services (Swarm)
+      SWARM: "0"        # DENY  /swarm
+      TASKS: "0"        # DENY  /tasks (Swarm)
+      VOLUMES: "0"      # DENY  /volumes — previene bind-mount del host desde sandbox
+    networks:
+      - open-banca-internal  # NUNCA exponer a open-banca-public ni al host
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  # ---------------------------------------------------------------------------
+  # api — FastAPI REST
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      target: runtime
+    container_name: open-banca-api
+    restart: unless-stopped
+    depends_on:
+      temporal-server:
+        condition: service_started
+    ports:
+      - "${OPEN_BANCA_API_PORT:-8080}:8080"
+    volumes:
+      - sqlite-data:/data
+      - maps-fs:/maps:ro
+      - job-artifacts:/artifacts:ro
+    environment:
+      OPEN_BANCA_MASTER_PASSPHRASE: "${OPEN_BANCA_MASTER_PASSPHRASE}"
+      WEBHOOK_HMAC_SECRET: "${WEBHOOK_HMAC_SECRET}"
+      API_KEY: "${API_KEY}"
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      LANGFUSE_ENABLED: "${LANGFUSE_ENABLED:-false}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OPEN_BANCA_ENV: "${OPEN_BANCA_ENV:-production}"
+    networks:
+      - open-banca-public
+      - open-banca-internal
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  # ---------------------------------------------------------------------------
+  # temporal-worker — spawn-ea sandbox containers via docker-socket-proxy
+  # NOTA: NO monta /var/run/docker.sock directamente (REQ-018)
+  # ---------------------------------------------------------------------------
+  temporal-worker:
+    build:
+      context: .
+      target: runtime
+    container_name: open-banca-temporal-worker
+    restart: unless-stopped
+    depends_on:
+      temporal-server:
+        condition: service_started
+      docker-socket-proxy:
+        condition: service_started
+    volumes:
+      - maps-fs:/maps:ro
+      - job-artifacts:/artifacts
+      # NO bind mount de /var/run/docker.sock — se usa docker-socket-proxy
+    environment:
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      TASK_QUEUE: "${TASK_QUEUE:-open-banca-main}"
+      WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-3}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      # DOCKER_HOST apunta al proxy — NO al socket del host
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
+    networks:
+      - open-banca-internal
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  # ---------------------------------------------------------------------------
+  # temporal-server
+  # ---------------------------------------------------------------------------
+  temporal-server:
+    image: temporalio/auto-setup:1.27.2
+    container_name: open-banca-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres-temporal:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres-temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: "${TEMPORAL_DB_PASSWORD:-temporal_prod_password}"
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      LOG_LEVEL: warn
+    networks:
+      - open-banca-internal
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  # ---------------------------------------------------------------------------
+  # postgres-temporal
+  # ---------------------------------------------------------------------------
+  postgres-temporal:
+    image: postgres:16-alpine
+    container_name: open-banca-postgres-temporal
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: "${TEMPORAL_DB_PASSWORD:-temporal_prod_password}"
+      POSTGRES_DB: temporal
+    volumes:
+      - pg-temporal:/var/lib/postgresql/data
+    networks:
+      - open-banca-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  # ---------------------------------------------------------------------------
+  # langfuse (opt-in — profile langfuse)
+  # ---------------------------------------------------------------------------
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: open-banca-langfuse
+    profiles: ["langfuse"]
+    restart: unless-stopped
+    depends_on:
+      postgres-langfuse:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse_prod}@postgres-langfuse:5432/langfuse"
+      NEXTAUTH_SECRET: "${LANGFUSE_NEXTAUTH_SECRET}"
+      SALT: "${LANGFUSE_SALT}"
+      NEXTAUTH_URL: "${LANGFUSE_URL:-http://localhost:3000}"
+    networks:
+      - open-banca-internal
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  postgres-langfuse:
+    image: postgres:16-alpine
+    container_name: open-banca-postgres-langfuse
+    profiles: ["langfuse"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: "${LANGFUSE_DB_PASSWORD:-langfuse_prod}"
+      POSTGRES_DB: langfuse
+    volumes:
+      - pg-langfuse:/var/lib/postgresql/data
+    networks:
+      - open-banca-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  open-banca-public:
+    name: open-banca-pub
+    driver: bridge
+
+  open-banca-internal:
+    name: open-banca-internal
+    driver: bridge
+    internal: false  # worker necesita DNS externo para spawn de sandbox
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  sqlite-data:
+    name: open-banca-sqlite-data
+
+  maps-fs:
+    name: open-banca-maps-fs
+
+  job-artifacts:
+    name: open-banca-job-artifacts
+
+  pg-temporal:
+    name: open-banca-pg-temporal
+
+  pg-langfuse:
+    name: open-banca-pg-langfuse
