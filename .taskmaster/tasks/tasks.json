@@ -256,12 +256,13 @@
       },
       {
         "id": 24,
-        "title": "docker-socket-proxy hardening + smoke tests",
-        "description": "REQ-018, Issue #2. Si worker necesita acceso al socket Docker para spawn sandbox containers, usar tecnomancy/docker-socket-proxy con allowlist mínima. Smoke test endpoints prohibidos.",
-        "details": "docker-compose service socket-proxy. Worker conecta vía proxy, no socket directo. ENV CONTAINERS=1, NETWORKS=1, BUILD=0, EXEC=0, etc. Smoke: GET /containers/json (allowed) vs DELETE /networks/host (blocked).",
+        "title": "docker-socket-proxy hardening + smoke tests (PROMOVIDO A P0 / Phase 1)",
+        "description": "REQ-018 (P0 tras master feedback), Issue #2. Si worker necesita acceso al socket Docker para spawn sandbox containers, usar tecnomancy/docker-socket-proxy con allowlist mínima. Smoke test endpoints prohibidos. PROMOVIDO de Phase 5/P2 a Phase 1/P0 porque Phase 3 piloto correría con socket exposure si esto queda al final.",
+        "details": "docker-compose service socket-proxy. Worker conecta vía proxy, no socket directo. ENV CONTAINERS=1, NETWORKS=1, BUILD=0, EXEC=0, etc. Smoke: GET /containers/json (allowed) vs DELETE /networks/host (blocked). Phase asignada: 1 (Foundation).",
         "testStrategy": "Suite de pytest: cada endpoint Docker API verificado allow/deny según whitelist. Compromise simulation: credentials leaked, attacker tries privileged ops via socket → fails.",
-        "priority": "medium",
-        "dependencies": [23],
+        "priority": "high",
+        "phase": 1,
+        "dependencies": [6],
         "status": "pending",
         "subtasks": []
       },
@@ -330,12 +331,72 @@
         "dependencies": [29],
         "status": "pending",
         "subtasks": []
+      },
+      {
+        "id": 31,
+        "title": "Wire FastAPI endpoints to use cases (replace 501 stubs)",
+        "description": "Gap del review #4: T3 deja endpoints como 501 stubs. Esta task los conecta a los use cases reales de application/ (StartScrapeJob, ConfirmOTP, ApplyRemapProposal, ListAccounts, GetJobResult, CancelJob, ApproveProposal, RejectProposal, TestWebhook, GetTime). Cada endpoint pasa a estado funcional sobre Temporal client + StoragePort.",
+        "details": "Endpoints a wire: POST /scrape → StartScrapeJob → Temporal client.start_workflow. GET /jobs/{id} → query workflow + storage. GET /jobs/{id}/result → GetJobResult. POST /jobs/{id}/otp-confirmed → signal otp_confirmed. POST /jobs/{id}/cancel → signal cancel_job. POST /maps/{bank}/proposals/{id}/approve|reject → ApplyMapPatch / RejectProposal. GET /banks → static config. GET /accounts → storage query. POST /webhooks/test → emit test webhook. GET /time → REQ-020 endpoint. Dependency injection via FastAPI Depends().",
+        "testStrategy": "Integration tests con Temporal time-skipping: cada endpoint dispara la cadena correcta de workflows/signals. Storage backed por SQLite in-memory para tests. Coverage por endpoint ≥ 90%.",
+        "priority": "high",
+        "phase": 2,
+        "dependencies": [3, 4, 12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 32,
+        "title": "Incremental scrape: cursor `since` storage + API params + buffer logic",
+        "description": "Gap del review #4: Story 2 AC (scrape incremental con `since`) no tiene task asignada. Implementar cursor por cuenta (persiste tras cada scrape exitoso), parámetro `since` en POST /scrape, ventana de descarga = `since - 3 días` (buffer) hasta hoy.",
+        "details": "Tabla `account_cursors` (account_id, bank, last_scrape_at, last_transaction_date, etag/range). API: POST /scrape acepta `{since: '2026-01-15'}` o `{since: 'last'}`. Workflow lee cursor, calcula ventana (since - 3d, today), pasa al Scraper runner via map.json params. Tras job.completed, actualiza cursor atómicamente. Dedup nivel 1 maneja overlap del buffer.",
+        "testStrategy": "Integration: scrape inicial completo → cursor persistido → segundo scrape con `since: last` → solo trae nuevos. Property test: buffer overlap nunca produce duplicados (depende de dedup nivel 1 estable).",
+        "priority": "high",
+        "phase": 3,
+        "dependencies": [16, 17],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 33,
+        "title": "docker-compose full stack (production-equivalent)",
+        "description": "Gap del review #4: Story 5 AC pide `docker-compose up` que levanta todo. Existe `docker-compose.dev.yml` (solo Temporal), falta el stack completo: api, temporal-server, temporal-worker, sandbox-runner, postgres (para Temporal), docker-socket-proxy. Langfuse opcional via profile.",
+        "details": "Archivo `docker-compose.yml` (no .dev). Servicios: api (FastAPI uvicorn), temporal-server, temporal-worker, sandbox-runner, postgres, docker-socket-proxy (T24), langfuse (profile=langfuse, off por default). Volumes: sqlite-data, downloads, maps. Env: OPEN_BANCA_MASTER_PASSPHRASE, API_KEYS via .env. Healthchecks por servicio. Network: backplane interno + sandbox-net aislado.",
+        "testStrategy": "Smoke en host fresh: `docker-compose up` + esperar healthchecks + curl localhost:8000/docs OK. Cold start time ≤ 60s. `docker-compose --profile langfuse up` levanta también Langfuse.",
+        "priority": "high",
+        "phase": 1,
+        "dependencies": [6, 24],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 34,
+        "title": "CLI `open-banca register-credentials` interactivo",
+        "description": "Gap del review #4: Story 5 AC pide CLI para registrar credenciales bancarias interactivamente. Subcomando `open-banca register-credentials --bank banco_general` que solicita usuario/password con prompt seguro (no en historial shell), cifra con vault, persiste en SQLite.",
+        "details": "Click o Typer CLI. Subcomandos: `register-credentials`, `list-credentials` (solo metadata), `delete-credentials`, `circuit-breaker reset` (Story 6). Para `register-credentials`: prompt master passphrase si no en env, prompt username (visible), prompt password (getpass), pregunta confirmación, cifra con Vault, inserta en SQLite. Output: `credential_ref` para usar en POST /scrape. Entry point en pyproject.toml: `open-banca = adapters.cli.main:app`.",
+        "testStrategy": "CLI tests con Click testing.CliRunner. Mock stdin para password. Verificar que password NO aparece en logs ni en proceso ps. Round-trip: register → list (solo ref + bank) → use en scrape → success.",
+        "priority": "high",
+        "phase": 1,
+        "dependencies": [5],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 35,
+        "title": "USER-TEST checkpoint 6: v1.0.0 release validation",
+        "description": "Gap del review #4: PRD §Validation Checkpoints define 6 checkpoints pero tasks.json solo tiene 5 (8, 13, 18, 22, 29). Esta task es el checkpoint 6 (release validation), separado de T30 (que ejecuta la release).",
+        "details": "Checklist (PRD §Checkpoint 6):\n- [ ] 3 betatesters externos completan setup en ≤ 30 min (Goal 4)\n- [ ] Goal 1 (success rate ≥ 95%): medido sobre 100 scrapes reales\n- [ ] Goal 2 (self-healing ≥ 70%): medido sobre breakages inducidos\n- [ ] Goal 3 (≤ $0.10/scrape estado estable): medido sobre últimas 50 corridas\n- [ ] Goal 4 (setup ≤ 30 min): cronómetro de 3 betatesters\n- [ ] Goal 5 (0 fugas credenciales): canary CI green últimos 30 días\n- [ ] Release notes + docs públicas\n- [ ] AGPL-3.0 LICENSE + headers verificados\n- [ ] v1.0.0 tag pusheado",
+        "testStrategy": "Auditoría final + sign-off del operator. Si algún Goal < target, no release; root-cause y fix antes de tag.",
+        "priority": "high",
+        "phase": 6,
+        "dependencies": [30],
+        "status": "pending",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2026-05-10T19:25:00.000Z",
-      "updated": "2026-05-10T19:25:00.000Z",
-      "description": "open-banca v1: API REST self-hosted AGPL-3.0 que scrapea bancos PA via agentes IA + Temporal + browser-use. Banco piloto Banco General. 30 tasks alineados a 6 fases (Foundation, Scraper runner, Mapper + piloto, Self-healing, Operations + security, Hardening + release). 5 USER-TEST checkpoints (tasks 8, 13, 18, 22, 29). PRD: .taskmaster/docs/prd.txt (100% EXCELLENT, 13/13 checks)."
+      "updated": "2026-05-10T21:00:00.000Z",
+      "description": "open-banca v1: API REST self-hosted AGPL-3.0 que scrapea bancos PA via agentes IA + Temporal + browser-use. Banco piloto Banco General. 35 tasks alineados a 6 fases (Foundation, Scraper runner, Mapper + piloto, Self-healing, Operations + security, Hardening + release). 6 USER-TEST checkpoints (tasks 8, 13, 18, 22, 29, 35). Post P0 review master feedback 2026-05-10: T24 promovido a Phase 1/P0, tasks 31-34 añadidos (gaps coverage review #4), task 35 añadida (checkpoint 6 release validation). PRD: .taskmaster/docs/prd.txt."
     }
   }
 }

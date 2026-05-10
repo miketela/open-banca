@@ -115,6 +115,33 @@ Documento ancla con todas las decisiones tomadas durante el design dialogue inic
 - LLM mocks vía PydanticAI test models.
 - Smoke test contra banco real opt-in (env var, requiere credenciales reales del operador).
 
+## ADR Index (decisiones post-review P0 master feedback 2026-05-10)
+
+Tabla compacta de ADRs activos. Detalle en `docs/adr/`.
+
+| ADR | Decision summary | Date | Status |
+|-----|------------------|------|--------|
+| ADR-0001 | Mapper-Runner split (declarative map.json + Playwright runner sin LLM) | 2026-05-09 | Accepted |
+| ADR-0002 | Excel-first capture strategy (no DOM scrape de transacciones) | 2026-05-09 | Accepted |
+| ADR-0003 | Temporal para durable orchestration | 2026-05-09 | Accepted |
+| ADR-0004 | Multi-agent architecture (Mapper / Scraper / Validator / Judge / Remapper) | 2026-05-09 | Accepted |
+| ADR-0005 | PydanticAI + LiteLLM como integration layer | 2026-05-09 | Accepted |
+| ADR-0006 | Vision split: Claude para Mapper/Remapper, DeepSeek para Validator/Judge | 2026-05-09 | Accepted |
+| ADR-0007 | Excel parser declarativo (DSL whitelisted helpers) | 2026-05-09 | Accepted |
+| ADR-0007-amendment | Parser DSL hardening: `re2` en lugar de `re` (ReDoS), `defusedxml` para openpyxl (zip-bomb), budget memoria/tiempo por helper, tests con payloads maliciosos | 2026-05-10 | Accepted |
+| ADR-0008 | sqlcipher para secrets at-rest (Argon2id KDF + AES-GCM) | 2026-05-09 | Accepted |
+| ADR-0008-amendment | mlock para master passphrase + `ulimit -c 0` (no core dumps) + swap deshabilitado en docker-compose. Hard requirement, no opcional. | 2026-05-10 | Accepted |
+| ADR-0009 | Docker sandbox per-job | 2026-05-09 | Accepted |
+| ADR-0010 | License AGPL-3.0 (forks/servicios derivados deben publicar código) | 2026-05-09 | Accepted |
+| ADR-0011 | Webhook events + HMAC-SHA256 firma | 2026-05-09 | Accepted |
+| ADR-0012 | Schema canónico unificado con discriminator account_type | 2026-05-09 | Accepted |
+| ADR-0013 | Confidence/risk threshold para auto-apply remap | 2026-05-09 | Accepted |
+| ADR-0013-amendment | HITL-only para auto-apply en v1 (eliminar auto-apply hasta tener calibración empírica del Judge con vision). Reduce blast radius. | 2026-05-10 | Accepted |
+| ADR-0014 | browser-use como foundation para Mapper/Remapper | 2026-05-09 | Accepted |
+| ADR-0015 | No session persistence cross-job en v1 | 2026-05-09 | Accepted |
+| ADR-0019 | BrowserSidecar proceso aparte que sobrevive a restart del worker Temporal durante OTP wait (resuelve P0-1 architecture review) | 2026-05-10 | Accepted |
+| ADR-0020 | PII redact middleware antes de mandar screenshots/DOM al LLM provider (cumplimiento Ley 81 PA Art. 13, resuelve P0-3 security review) | 2026-05-10 | Accepted |
+
 ## Monorepo
 
 - **Nx + `@nxlv/python`** (decisión usuario). Paquetes:
