@@ -1,1 +1,1 @@
-# open-banca: LLM adapter: PydanticAI integration and LiteLLM client
+"""open-banca LLM adapter — browser-use + LiteLLM + PII-filter stack."""

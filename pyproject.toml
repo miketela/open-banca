@@ -34,6 +34,9 @@ dev = [
     "detect-secrets>=1.5.0",
 ]
 
+[tool.uv.sources]
+browser-use = { path = "/Users/mike/Documents/maybe finance/browser-use", editable = true }
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
