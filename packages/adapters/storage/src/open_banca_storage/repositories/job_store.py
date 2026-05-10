@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -11,9 +12,12 @@ from typing import Any
 
 from open_banca_domain.entities.account import (
     AccountUnion,
+    CheckingAccount,
     CreditCardAccount,
+    SavingsAccount,
 )
 from open_banca_domain.entities.job import Job, JobMode, JobStatus
+from open_banca_domain.entities.remap_proposal import RemapProposal, RemapStatus
 from open_banca_domain.entities.transaction import Transaction
 from open_banca_storage.connection import Connection
 
@@ -227,6 +231,104 @@ class SqliteJobStore:
         )
         self._conn.commit()
 
+    # ── Extended query methods (used by use cases) ────────────────────────────
+
+    def list_accounts_by_bank(self, bank: str) -> list[AccountUnion]:
+        """Return all accounts for a given bank."""
+        rows = self._conn.execute(
+            """
+            SELECT id, bank, bank_account_id, account_type, currency, balance,
+                   credit_limit, available_credit, cut_date, min_payment,
+                   payment_due_date, statement_balance, opened_at
+            FROM accounts
+            WHERE bank = ?
+            ORDER BY bank_account_id ASC
+            """,
+            (bank,),
+        ).fetchall()
+        return [_row_to_account(row) for row in rows]
+
+    def list_transactions_by_job(self, job_id: str) -> list[Transaction]:
+        """Return all transactions associated with a job."""
+        rows = self._conn.execute(
+            """
+            SELECT id, account_id, posted_at, value_at, amount, currency,
+                   description, fingerprint_hash, embedded_id, transfer_match_id
+            FROM transactions
+            WHERE job_id = ?
+            ORDER BY posted_at ASC
+            """,
+            (job_id,),
+        ).fetchall()
+        return [_row_to_transaction(row) for row in rows]
+
+    # ── Remap proposals ───────────────────────────────────────────────────────
+
+    def save_proposal(self, proposal: RemapProposal) -> None:
+        """Insert or update a remap proposal."""
+        self._conn.execute(
+            """
+            INSERT INTO remap_proposals (
+                id, bank, breakage_id, judge_decision, confidence, risk,
+                patch_diff, status, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                status     = excluded.status,
+                expires_at = excluded.expires_at
+            """,
+            (
+                proposal.id,
+                proposal.bank,
+                proposal.breakage_id,
+                proposal.judge_decision,
+                proposal.confidence,
+                proposal.risk,
+                proposal.patch_diff,
+                str(proposal.status),
+                proposal.expires_at.isoformat(),
+                _utcnow_iso(),
+            ),
+        )
+        self._conn.commit()
+
+    def load_proposal(self, proposal_id: str) -> RemapProposal | None:
+        """Load a remap proposal by ID, returning None if not found."""
+        row = self._conn.execute(
+            """
+            SELECT id, bank, breakage_id, judge_decision, confidence, risk,
+                   patch_diff, status, expires_at
+            FROM remap_proposals
+            WHERE id = ?
+            """,
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _row_to_proposal(row)
+
+    # ── Idempotency ───────────────────────────────────────────────────────────
+
+    def get_idempotency(self, key: str) -> dict[str, str] | None:
+        """Return stored idempotency record for key, or None if absent."""
+        row = self._conn.execute(
+            "SELECT key, request_hash, job_id FROM idempotency_keys WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"key": row[0], "request_hash": row[1], "job_id": row[2]}
+
+    def save_idempotency(self, key: str, request_hash: str, job_id: str) -> None:
+        """Persist an idempotency key → job_id mapping."""
+        self._conn.execute(
+            """
+            INSERT OR IGNORE INTO idempotency_keys (key, request_hash, job_id, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (key, request_hash, job_id, _utcnow_iso()),
+        )
+        self._conn.commit()
+
 
 # ── Audit log helpers ─────────────────────────────────────────────────────────
 
@@ -402,3 +504,106 @@ def _bank_from_account(account: AccountUnion) -> str:
 def _decimal_from_text(text: str) -> Decimal:
     """Parse a Decimal stored as TEXT."""
     return Decimal(text)
+
+
+def _row_to_account(row: tuple[Any, ...]) -> AccountUnion:
+    """Convert a DB row tuple to an AccountUnion entity."""
+    from datetime import date  # noqa: PLC0415
+
+    (
+        id_,
+        _bank,
+        bank_account_id,
+        account_type,
+        currency,
+        balance,
+        credit_limit,
+        available_credit,
+        cut_date,
+        min_payment,
+        payment_due_date,
+        statement_balance,
+        opened_at,
+    ) = row
+
+    common = {
+        "id": id_,
+        "bank_account_id": bank_account_id,
+        "account_type": account_type,
+        "currency": currency,
+        "balance": Decimal(balance),
+        "opened_at": date.fromisoformat(opened_at),
+    }
+
+    if account_type == "credit_card":
+        return CreditCardAccount(
+            **common,
+            credit_limit=Decimal(credit_limit or "0"),
+            available_credit=Decimal(available_credit or "0"),
+            cut_date=date.fromisoformat(cut_date) if cut_date else date.today(),
+            min_payment=Decimal(min_payment or "0"),
+            payment_due_date=date.fromisoformat(payment_due_date) if payment_due_date else date.today(),
+            statement_balance=Decimal(statement_balance or "0"),
+        )
+    if account_type == "checking":
+        return CheckingAccount(**common)
+    return SavingsAccount(**common)
+
+
+def _row_to_transaction(row: tuple[Any, ...]) -> Transaction:
+    """Convert a DB row tuple to a Transaction entity."""
+    (
+        id_,
+        account_id,
+        posted_at,
+        value_at,
+        amount,
+        currency,
+        description,
+        fingerprint_hash,
+        embedded_id,
+        transfer_match_id,
+    ) = row
+    return Transaction(
+        id=id_,
+        account_id=account_id,
+        posted_at=datetime.fromisoformat(posted_at),
+        value_at=datetime.fromisoformat(value_at),
+        amount=Decimal(amount),
+        currency=currency,
+        description=description,
+        fingerprint_hash=fingerprint_hash,
+        embedded_id=embedded_id,
+        transfer_match_id=transfer_match_id,
+    )
+
+
+def _row_to_proposal(row: tuple[Any, ...]) -> RemapProposal:
+    """Convert a DB row tuple to a RemapProposal entity."""
+    (
+        id_,
+        bank,
+        breakage_id,
+        judge_decision,
+        confidence,
+        risk,
+        patch_diff,
+        status,
+        expires_at,
+    ) = row
+    return RemapProposal(
+        id=id_,
+        bank=bank,
+        breakage_id=breakage_id,
+        judge_decision=judge_decision,
+        confidence=confidence,
+        risk=risk,
+        patch_diff=patch_diff,
+        status=RemapStatus(status),
+        expires_at=datetime.fromisoformat(expires_at),
+    )
+
+
+def canonical_request_hash(body_json: str) -> str:
+    """Return SHA-256 hex digest of a canonical request body string."""
+    return hashlib.sha256(body_json.encode()).hexdigest()
