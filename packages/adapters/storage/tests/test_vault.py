@@ -253,3 +253,40 @@ def test_rotate_master_requires_env_var(vault_db: tuple[SecretVault, ConnectionP
     with patch.dict(os.environ, env_without_new, clear=True):
         with pytest.raises(OSError):
             vault.rotate_master()
+
+
+@pytest.mark.unit()
+def test_rotate_master_rekeyes_sqlcipher_db(tmp_path: Path) -> None:
+    """rotate_master re-keys the SQLCipher DB file via PRAGMA rekey.
+
+    After rotation and a fresh connection pool opened with the new passphrase,
+    fetch_credential must still return the correct plaintext.  This verifies
+    that PRAGMA rekey was called with the new Argon2id-derived key.
+    """
+    old_passphrase = "rekey-old-master-1234"
+    new_passphrase = "rekey-new-master-5678"
+
+    db_file = tmp_path / "rekey.db"
+    kdf = Argon2idKeyDerivation()
+
+    # --- Phase 1: create vault with old master, store a credential, rotate ---
+    pool_old = ConnectionPool(db_path=db_file, passphrase=old_passphrase, key_derivation=kdf)
+    migrate(pool_old.get())
+    vault = SecretVault(pool=pool_old, master_passphrase=old_passphrase)
+    cred = vault.store_credential("banco_general", "rekey-secret", "password")
+
+    with patch.dict(os.environ, {"OPEN_BANCA_MASTER_PASSPHRASE_NEW": new_passphrase}):
+        vault.rotate_master()
+
+    # Close the old pool (connection was opened with old key, rekey'd in-place)
+    pool_old.close()
+
+    # --- Phase 2: open a FRESH pool with the NEW passphrase only ---
+    pool_new = ConnectionPool(db_path=db_file, passphrase=new_passphrase, key_derivation=kdf)
+    vault2 = SecretVault(pool=pool_new, master_passphrase=new_passphrase)
+    result = vault2.fetch_credential(cred.credential_ref)
+    pool_new.close()
+
+    assert result == "rekey-secret", (
+        "fetch_credential returned wrong value after master rotation + DB rekey"
+    )

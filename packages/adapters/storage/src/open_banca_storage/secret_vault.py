@@ -45,7 +45,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from open_banca_domain.entities.credential import Credential
 from open_banca_domain.ports.secret_store_port import SecretStorePort
 from open_banca_storage.connection import ConnectionPool
-from open_banca_storage.kdf import derive_row_key, wipe_row_key
+from open_banca_storage.kdf import Argon2idKeyDerivation, derive_row_key, wipe_row_key
 
 logger = logging.getLogger(__name__)
 
@@ -248,12 +248,20 @@ class SecretVault:
             for i in range(len(plaintext_ba)):
                 plaintext_ba[i] = 0
 
-        # Apply all updates in a single transaction
+        # Apply all row updates in a single transaction
         conn.executemany(
             "UPDATE credentials SET ciphertext=?, nonce=?, kdf_meta=? WHERE id=?",
             updates,
         )
         conn.commit()
+
+        # Rekey the SQLCipher DB file with the new Argon2id-derived passphrase.
+        # PRAGMA rekey must be issued BEFORE swapping the in-memory master so
+        # that the current connection (still opened with the old key) can
+        # authenticate the rekey.  After rekey, all NEW connections must use
+        # the new derive_db_key() result.
+        new_db_key = Argon2idKeyDerivation().derive_db_key(new_passphrase)
+        conn.execute(f"PRAGMA rekey = '{new_db_key}';")
 
         # Wipe old master and replace with new
         wipe_row_key(self._master)
@@ -306,13 +314,19 @@ class SecretVault:
             logger.warning("vault: failed to write audit log entry for action=%s", action)
 
     def close(self) -> None:
-        """Zeroize the master passphrase buffer."""
+        """Zeroize the master passphrase buffer.
+
+        Call on application shutdown or after the vault is no longer needed.
+        Prefer using the context-manager protocol (``with SecretVault(...) as v:``)
+        to ensure automatic cleanup.
+        """
         wipe_row_key(self._master)
 
+    def __enter__(self) -> SecretVault:
+        return self
 
-# Runtime check — SecretVault satisfies SecretStorePort
-def _check_protocol() -> None:
-    assert isinstance(SecretVault, type)
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
 
 # Make SecretVault a recognized implementation of SecretStorePort at import time
