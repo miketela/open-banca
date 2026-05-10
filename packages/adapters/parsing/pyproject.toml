@@ -1,9 +1,21 @@
 [project]
 name = "open-banca-parsing"
 version = "0.1.0"
-description = "Parsing adapter: Excel DSL engine"
+description = "Parsing adapter: Excel DSL engine — declarative DSL-driven Excel ingestion with security hardening"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "openpyxl>=3.1",
+    "defusedxml>=0.7",
+    # google-re2 provides `import re2`; O(n) linear-time regex, immune to ReDoS (CWE-1333, ADR-0007-amendment).
+    # If google-re2 wheel build fails on this platform, pyre2 is the fallback (different API surface).
+    "google-re2>=1.1",
+    "pydantic>=2",
+    "open-banca-domain",
+]
+
+[tool.uv.sources]
+open-banca-domain = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
