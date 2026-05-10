@@ -501,10 +501,15 @@ class TestGetBanks:
         self,
         wired_client: TestClient,
     ) -> None:
-        """GET /banks returns a list (possibly empty if banks/ dir is missing)."""
+        """GET /banks returns a non-empty list with banco_general."""
         resp = wired_client.get("/banks", headers=AUTH)
         assert resp.status_code == 200, resp.text
-        assert isinstance(resp.json(), list)
+        banks = resp.json()
+        assert isinstance(banks, list)
+        bank_ids = [b["bank_id"] for b in banks]
+        assert "banco_general" in bank_ids, (
+            f"Expected 'banco_general' in banks list, got: {bank_ids}"
+        )
 
     def test_get_banks_structure(
         self,
@@ -513,6 +518,7 @@ class TestGetBanks:
         """Each bank entry has required fields."""
         resp = wired_client.get("/banks", headers=AUTH)
         banks = resp.json()
+        assert len(banks) > 0, "No banks found — check _BANKS_DIR path resolution"
         for bank in banks:
             assert "bank_id" in bank
             assert "display_name" in bank

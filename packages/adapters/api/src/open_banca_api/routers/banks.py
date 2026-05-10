@@ -13,8 +13,17 @@ from open_banca_api.auth import verify_bearer
 
 logger = logging.getLogger(__name__)
 
-# Path to the banks directory (relative to the repo root, resolved at runtime)
-_BANKS_DIR: Path = Path(__file__).parents[8] / "packages" / "banks"
+# Path to the banks directory.
+# parents[6] = worktree root (from .../packages/adapters/api/src/open_banca_api/routers/banks.py)
+# Override at runtime via OPEN_BANCA_BANKS_DIR env var for alternative deployments.
+import os as _os  # noqa: E402
+
+_BANKS_DIR: Path = Path(
+    _os.environ.get(
+        "OPEN_BANCA_BANKS_DIR",
+        str(Path(__file__).parents[6] / "packages" / "banks"),
+    )
+)
 
 router = APIRouter(
     prefix="/banks",

@@ -508,7 +508,7 @@ def _decimal_from_text(text: str) -> Decimal:
 
 def _row_to_account(row: tuple[Any, ...]) -> AccountUnion:
     """Convert a DB row tuple to an AccountUnion entity."""
-    from datetime import date  # noqa: PLC0415
+    from datetime import date
 
     (
         id_,

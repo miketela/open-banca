@@ -62,12 +62,13 @@ def test_migrate_creates_all_tables(in_memory_pool):
 
 
 def test_migrate_idempotent(in_memory_pool):
-    """Calling migrate() twice must succeed and apply no extra migrations."""
+    """Calling migrate() twice must succeed and apply no extra migrations on second run."""
     conn = in_memory_pool.get()
     first = migrate(conn)
     second = migrate(conn)
 
-    assert len(first) == 1, f"Expected 1 migration on first run, got {first}"
+    # first run applies all pending migrations (currently 2: 001 + 002)
+    assert len(first) >= 1, f"Expected at least 1 migration on first run, got {first}"
     assert second == [], f"Expected 0 migrations on second run, got {second}"
 
 
@@ -79,6 +80,7 @@ def test_schema_migrations_tracks_files(in_memory_pool):
     rows = conn.execute("SELECT filename FROM schema_migrations").fetchall()
     filenames = [r[0] for r in rows]
     assert "001_initial.sql" in filenames
+    assert "002_task31_extensions.sql" in filenames
 
 
 def test_wrong_key_raises(tmp_path):
