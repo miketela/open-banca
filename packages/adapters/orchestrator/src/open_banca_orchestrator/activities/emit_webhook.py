@@ -1,85 +1,114 @@
-"""EmitWebhookActivity — deliver a signed webhook event to the configured endpoint.
+"""EmitWebhookActivity — enqueue a signed webhook event via WebhookDispatcher.
 
 Retry policy (orchestrator.md §Inventario):
-  - Exponential backoff, 5 attempts, max retry interval 1 h.
-  - start-to-close timeout: 10 s per attempt.
-  - NO heartbeat (short-running HTTP call).
+  - The activity itself only enqueues in the outbox (no network I/O).
+  - Actual HTTP delivery + retry is handled by the webhook worker process.
+  - Temporal retry policy covers transient outbox write failures.
 
-Idempotency key: event_id (UUID v7) — webhook receiver should deduplicate.
+Idempotency key: event_id (UUID) — webhook receiver should deduplicate.
 
-HMAC-SHA256 signature on the payload per ADR security requirements.
-
-IMPLEMENTATION STATUS: skeleton — raises NotImplementedError.
+HMAC-SHA256 signature on the payload per ADR-0011:
+  X-OpenBanca-Signature: t=<ts>,v1=<hex_hmac>,n=<nonce>
+  Window: 60 seconds. Nonce: required.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
+import os
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from open_banca_domain.entities.webhook_event import WebhookEvent, WebhookEventType
 
 
-class WebhookEventType(StrEnum):
-    """Webhook event types emitted by the orchestrator."""
+class EmitWebhookInput(BaseModel):
+    """Input for EmitWebhookActivity."""
 
-    job_completed = "job.completed"
-    job_failed = "job.failed"
-    job_otp_required = "job.otp_required"
-    job_cancelled = "job.cancelled"
-    remap_proposed = "job.remap_proposed"
-    remap_completed = "job.remap_completed"
-
-
-class WebhookEvent(BaseModel):
-    """Webhook event payload."""
-
-    event_id: str = Field(description="UUID v7 event identifier for idempotency")
-    event_type: WebhookEventType
-    job_id: str
-    timestamp: str = Field(description="ISO 8601 UTC timestamp")
+    event_id: str = Field(description="UUID event identifier for idempotency")
+    event_type: str = Field(description="One of the 7 webhook event types")
+    job_id: str = Field(description="Associated scrape job ID")
     payload: dict[str, object] = Field(
         default_factory=dict,
         description="Event-type-specific payload fields",
     )
 
 
-class EmitWebhookInput(BaseModel):
-    """Input for EmitWebhookActivity."""
-
-    event: WebhookEvent = Field(description="Webhook event to deliver")
-
-
 class EmitWebhookResult(BaseModel):
     """Result from EmitWebhookActivity."""
 
-    enqueued: bool = Field(description="True if webhook was accepted by the endpoint")
-    http_status: int | None = Field(
-        default=None,
-        description="HTTP response status from the endpoint",
-    )
-    attempt_number: int = Field(
-        default=1,
-        description="Which retry attempt succeeded (1 = first try)",
-    )
+    enqueued: bool = Field(description="True if webhook was enqueued in outbox")
+    event_id: str = Field(description="The enqueued event ID")
 
 
 class EmitWebhookActivity:
-    """EmitWebhookActivity class-based wrapper."""
+    """EmitWebhookActivity class-based wrapper (unused, kept for compatibility)."""
 
 
 @activity.defn(name="EmitWebhookActivity")
 async def emit_webhook(input: EmitWebhookInput) -> EmitWebhookResult:  # noqa: A002
-    """Deliver a signed HMAC-SHA256 webhook event to the configured endpoint.
+    """Enqueue a signed HMAC-SHA256 webhook event in the outbox.
 
-    Retry is handled by Temporal (5 attempts, exp backoff, max 1 h interval).
-    Activity itself performs a single HTTP POST attempt.
+    Delegates to WebhookDispatcher.publish() which writes to the SQLite outbox.
+    The webhook worker process performs the actual HTTP delivery with retry.
 
-    TODO: implement HMAC-SHA256 signing with webhook secret from secrets store.
-    TODO: use httpx AsyncClient for the HTTP POST.
-    TODO: on 4xx non-retryable: raise ApplicationError(non_retryable=True).
-    TODO: on 5xx retryable: raise ApplicationError(non_retryable=False) to let Temporal retry.
+    Raises ApplicationError(non_retryable=True) for configuration errors.
+    Raises ApplicationError(non_retryable=False) for transient write failures.
     """
-    raise NotImplementedError(
-        "EmitWebhookActivity not implemented — wired in task implementing webhook delivery"
+    try:
+        from open_banca_webhooks.dispatcher import WebhookDispatcher
+    except ImportError as exc:
+        raise ApplicationError(
+            "WebhookDispatcher not available — open-banca-webhooks package missing",
+            non_retryable=True,
+        ) from exc
+
+    target_url = os.environ.get("OPEN_BANCA_WEBHOOK_TARGET_URL", "")
+    secret = os.environ.get("OPEN_BANCA_WEBHOOK_SECRET", "")
+    db_path = os.environ.get("OPEN_BANCA_WEBHOOK_DB_PATH", "./webhook_outbox.db")
+
+    if not target_url:
+        raise ApplicationError(
+            "OPEN_BANCA_WEBHOOK_TARGET_URL not configured",
+            non_retryable=True,
+        )
+    if not secret:
+        raise ApplicationError(
+            "OPEN_BANCA_WEBHOOK_SECRET not configured",
+            non_retryable=True,
+        )
+
+    try:
+        event_type = WebhookEventType(input.event_type)
+    except ValueError as exc:
+        raise ApplicationError(
+            f"Invalid event_type: {input.event_type}",
+            non_retryable=True,
+        ) from exc
+
+    dispatcher = WebhookDispatcher(
+        target_url=target_url,
+        secret=secret,
+        db_path=db_path,
     )
+
+    event = WebhookEvent(
+        id=input.event_id,
+        event_type=event_type,
+        payload=input.payload,
+        signature="",
+        dispatched_at=datetime.now(UTC),
+        job_id=input.job_id,
+    )
+
+    try:
+        dispatcher.publish(event)
+    except Exception as exc:
+        raise ApplicationError(
+            f"Failed to enqueue webhook event: {exc}",
+            non_retryable=False,
+        ) from exc
+
+    return EmitWebhookResult(enqueued=True, event_id=input.event_id)

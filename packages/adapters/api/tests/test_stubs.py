@@ -14,7 +14,7 @@ _STUB_ENDPOINTS = [
     ("POST", "/maps/banco_general/proposals/prop-1/reject", None),
     ("GET", "/banks", None),
     ("GET", "/accounts", None),
-    ("POST", "/webhooks/test", {"event_type": "job.completed"}),
+    # NOTE: /webhooks/test is implemented (task-25) — removed from stub list.
 ]
 
 
