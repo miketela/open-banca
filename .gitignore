@@ -70,6 +70,10 @@ temporal-data/
 *.log
 logs/
 
+# Claude Code: ephemeral agent worktrees (managed by harness)
+.claude/worktrees/
+.claude/settings.local.json
+
 logs
 npm-debug.log*
 yarn-debug.log*
