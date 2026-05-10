@@ -105,6 +105,15 @@ sequenceDiagram
 
 El LLM ve placeholders (`<USER>`, `<PASS>`); browser-use sustituye en el momento de ejecución dentro del browser. Si el agente intenta leer el valor (ej. tool `extract_dom` sobre un input de password) se devuelve mascarado.
 
+### Pre-LLM PII redact filter
+
+Una vez que el agente completa el login, el banco renderiza en el DOM y en los screenshots datos personales del titular (nombre, número de cuenta, saldos). Estos datos se redactan **antes** de enviar el payload a LiteLLM / Claude Sonnet 4.6:
+
+- **Capa 1 (texto/DOM)**: regex sobre el texto de los mensajes redacta números de cuenta, nombres en selectores marcados como `"pii": true` en `map.json`, y saldos numéricos (reemplazados por orden de magnitud `[BAL~10K]`).
+- **Capa 2 (imagen/screenshot)**: bloque sólido sobre regiones definidas en `pii_regions[]` del `map.json`. No opera en el primer run de onboarding (el map no existe aún — gap documentado en threat T18).
+
+Ver [ADR-0020 — PII redact at LLM boundary](../adr/0020-pii-redact-llm-boundary.md) y amenaza **T18** en el threat model.
+
 ## Límites operativos
 
 | Cap | Valor por defecto | Razón |
