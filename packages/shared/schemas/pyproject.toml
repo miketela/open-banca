@@ -4,6 +4,13 @@ version = "0.1.0"
 description = "Shared Pydantic schemas: cross-package request/response models and events"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "pydantic>=2.7",
+    "open-banca-domain",
+]
+
+[tool.uv.sources]
+open-banca-domain = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
