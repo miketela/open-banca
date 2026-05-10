@@ -44,7 +44,10 @@ htmlcov/
 *.db
 data/
 downloads/
-har/
+# Raw HAR recordings (contain credentials). Sanitized fixtures in banks/*/fixtures/har/sanitized/ are committable.
+# Do NOT ignore the har/ Python module (packages/adapters/browser/src/open_banca_browser/har/).
+banks/*/fixtures/har/raw/
+*.har.raw
 screenshots/
 traces/
 

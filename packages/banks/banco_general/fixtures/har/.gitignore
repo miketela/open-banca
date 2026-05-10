@@ -1,0 +1,8 @@
+# Raw HAR files contain live credentials — NEVER commit them.
+# Always sanitize with `python -m open_banca_browser.har.sanitize raw/<file>.har sanitized/<file>.har`
+# before adding to the repository.
+raw/
+
+# Intermediate / working files
+*.har.tmp
+*.har.bak
