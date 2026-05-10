@@ -37,28 +37,52 @@ import asyncio
 import logging
 import signal
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
-from temporalio.activity import defn as activity_defn
 from temporalio.worker import Worker
 
+from open_banca_orchestrator.activities import (
+    download_excel,
+    emit_webhook,
+    judge,
+    login,
+    mapper_agent,
+    navigate,
+    otp_signal_await,
+    parse_excel,
+    remapper_agent,
+    validate,
+)
 from open_banca_orchestrator.client import get_client
 from open_banca_orchestrator.config import OrchestratorSettings, get_settings
+from open_banca_orchestrator.workflows import (
+    MapBankWorkflow,
+    RemapBankWorkflow,
+    ScrapeJobWorkflow,
+)
 
 logger = logging.getLogger(__name__)
 
-
 # ---------------------------------------------------------------------------
-# Placeholder activity — required because Worker rejects empty activity lists.
-# Remove once Tasks 9, 12, 14, 19, 20 register real activities.
+# Activity registry — all 10 canonical activities (orchestrator.md §Inventario)
 # ---------------------------------------------------------------------------
-@activity_defn
-async def _noop_placeholder() -> None:  # pragma: no cover
-    """Placeholder activity: keeps worker construction valid.
+# ParseExcelActivity is synchronous (openpyxl blocking I/O) and must run in a
+# ThreadPoolExecutor.  All other activities are async.
+_ASYNC_ACTIVITIES = [
+    login,           # LoginActivity
+    otp_signal_await,  # OTPSignalAwaitActivity (long-running, 4 min, heartbeat 15s)
+    navigate,        # NavigateActivity
+    download_excel,  # DownloadExcelActivity
+    validate,        # ValidateActivity  — PLACEHOLDER task 19
+    judge,           # JudgeActivity     — PLACEHOLDER task 19
+    mapper_agent,    # MapperAgentActivity — PLACEHOLDER task 14
+    remapper_agent,  # RemapperAgentActivity — PLACEHOLDER task 20
+    emit_webhook,    # EmitWebhookActivity
+]
 
-    This activity is never scheduled by a real workflow.  It exists solely so
-    that ``Worker(activities=[...])`` receives a non-empty list during the
-    Task-6 skeleton phase.  Delete this when the first real activity lands.
-    """
+_SYNC_ACTIVITIES = [
+    parse_excel,     # ParseExcelActivity — sync, threadpool (openpyxl)
+]
 
 
 async def run_worker(settings: OrchestratorSettings | None = None) -> None:
@@ -82,25 +106,34 @@ async def run_worker(settings: OrchestratorSettings | None = None) -> None:
 
     client = await get_client(cfg)
 
+    # ThreadPoolExecutor for synchronous activities (ParseExcelActivity).
+    # Bounded to avoid resource exhaustion; sync activities are CPU+IO bounded.
+    thread_pool = ThreadPoolExecutor(
+        max_workers=min(4, cfg.worker_max_concurrent_activities),
+        thread_name_prefix="open-banca-sync-activity",
+    )
+
     worker = Worker(
         client,
         task_queue=cfg.temporal_task_queue,
-        # Workflows registered in tasks 9, 12 (ScrapeJobWorkflow, MapBankWorkflow,
-        # RemapBankWorkflow).  Add them here when those tasks land.
-        workflows=[],
-        # Activities registered in tasks 14, 19, 20 (LoginActivity, NavigateActivity,
-        # DownloadExcelActivity, ParseExcelActivity, ValidateActivity, JudgeActivity,
-        # MapperAgentActivity, RemapperAgentActivity, EmitWebhookActivity,
-        # OTPSignalAwaitActivity, and one more per PRD REQ-002).
-        # Placeholder keeps Worker construction valid until then.
-        activities=[_noop_placeholder],
+        workflows=[
+            ScrapeJobWorkflow,
+            MapBankWorkflow,
+            RemapBankWorkflow,
+        ],
+        activities=[*_ASYNC_ACTIVITIES, *_SYNC_ACTIVITIES],
+        activity_executor=thread_pool,
         max_concurrent_activities=cfg.worker_max_concurrent_activities,
         max_concurrent_workflow_tasks=cfg.worker_max_concurrent_workflows,
     )
 
     logger.info(
         "worker started",
-        extra={"task_queue": cfg.temporal_task_queue},
+        extra={
+            "task_queue": cfg.temporal_task_queue,
+            "workflows": ["ScrapeJobWorkflow", "MapBankWorkflow", "RemapBankWorkflow"],
+            "activities": len(_ASYNC_ACTIVITIES) + len(_SYNC_ACTIVITIES),
+        },
     )
 
     await worker.run()
