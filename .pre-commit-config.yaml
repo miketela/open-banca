@@ -8,6 +8,26 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: end-of-file-fixer
+        types: [python]
+      - id: trailing-whitespace
+        types: [python]
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: uv\.lock|\.secrets\.baseline
+
   - repo: local
     hooks:
       - id: pyrefly-check
@@ -19,36 +39,7 @@ repos:
 
       - id: har-sanitizer-gate
         name: HAR sanitizer gate (block raw credentials in staged HAR files)
+        entry: python scripts/har_sanitizer_gate.py
         language: python
-        entry: python -c |
-          import sys, re, json, pathlib
-          # Secret patterns that must not appear in committed HAR files.
-          FORBIDDEN = [
-              re.compile(r'SECRET_CANARY_VALUE', re.IGNORECASE),
-              re.compile(r'PII_CANARY_[A-Z0-9_]+', re.IGNORECASE),
-              re.compile(r'"Authorization"\s*:\s*"(?!REDACTED)[^"]+', re.IGNORECASE),
-              re.compile(r'"Cookie"\s*:\s*"(?!REDACTED)[^"]+', re.IGNORECASE),
-              re.compile(r'"Set-Cookie"\s*:\s*"(?!REDACTED)[^"]+', re.IGNORECASE),
-              re.compile(r'"(?:password|token|session)"\s*:\s*"(?!REDACTED)[^"]+', re.IGNORECASE),
-          ]
-          RAW_PATH_RE = re.compile(r'[\\/]raw[\\/]')
-          failed = False
-          for p in sys.argv[1:]:
-              path = pathlib.Path(p)
-              if RAW_PATH_RE.search(str(path)):
-                  print(f'ERROR: refusing to commit HAR from raw/ directory: {p}', file=sys.stderr)
-                  failed = True
-                  continue
-              try:
-                  content = path.read_text(encoding='utf-8', errors='replace')
-              except Exception as e:
-                  print(f'WARNING: could not read {p}: {e}', file=sys.stderr)
-                  continue
-              for pat in FORBIDDEN:
-                  if pat.search(content):
-                      print(f'ERROR: {p} contains unsanitized secret pattern: {pat.pattern}', file=sys.stderr)
-                      failed = True
-                      break
-          sys.exit(1 if failed else 0)
         files: \.har$
         pass_filenames: true

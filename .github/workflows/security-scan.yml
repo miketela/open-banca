@@ -1,0 +1,70 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: ["develop", "main"]
+  schedule:
+    # Weekly scan every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history for gitleaks
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Python dependency audit (pip-audit)
+        run: |
+          uv run pip-audit --requirement <(uv pip compile pyproject.toml --all-extras 2>/dev/null || echo "") \
+            --severity high \
+            --format cyclonedx-json \
+            --output pip-audit-results.json || true
+          # Fail on HIGH/CRITICAL
+          uv run pip-audit --requirement <(uv pip compile pyproject.toml --all-extras 2>/dev/null || echo "") \
+            --severity high
+        continue-on-error: false
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Filesystem vulnerability scan (trivy)
+        run: |
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --no-progress \
+            --format table \
+            .
+
+      - name: Secrets scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          args: detect --no-banner --redact --exit-code 1
