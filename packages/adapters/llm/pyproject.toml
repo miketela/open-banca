@@ -4,6 +4,21 @@ version = "0.1.0"
 description = "LLM adapter: PydanticAI integration and LiteLLM client"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "litellm>=1.50",
+    "pydantic>=2",
+    "browser-use",
+    "open-banca-domain",
+    "open-banca-browser",
+    "open-banca-observability",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,3 +26,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/open_banca_llm"]
+
+[tool.uv.sources]
+browser-use = { path = "/Users/mike/Documents/maybe finance/browser-use", editable = true }
+open-banca-domain = { workspace = true }
+open-banca-browser = { workspace = true }
+open-banca-observability = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
