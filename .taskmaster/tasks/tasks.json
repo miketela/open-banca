@@ -1,0 +1,341 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Setup monorepo Nx + Python uv workspaces",
+        "description": "Inicializar monorepo Nx con plugin @nxlv/python. Crear workspaces para domain, application, adapters/{api,orchestrator,browser,llm,storage,parsing,sandbox}, banks/banco_general, shared/schemas. Python 3.12+, uv como package manager, Ruff + Pyrefly como linters.",
+        "details": "Estructura: ver PRD §Technical Considerations. Comandos: nx generate @nxlv/python:application api, etc. pyproject.toml por package. Workspace root con uv workspace member list. Configurar pre-commit hooks: ruff check, ruff format, pyrefly.",
+        "testStrategy": "nx run-many --target=lint --all pasa. uv sync --all-extras sin errores. nx graph muestra deps correctas (domain ← application ← adapters).",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Hexagonal scaffolding: domain + application layers",
+        "description": "Crear entidades del dominio (Job, Account, Transaction, BankMap, Credential, BreakageEvent) y puertos (ScraperPort, OrchestratorPort, StoragePort, LLMPort, BrowserPort, SandboxPort, ParserPort). Use cases en application/.",
+        "details": "Entidades Pydantic v2 inmutables. Puertos como Protocols (typing.Protocol). Use cases: StartScrapeJob, ConfirmOTP, ApplyRemapProposal, ListAccounts, GetJobResult. Schema canónico unificado con discriminator account_type (savings|checking|credit_card). Ver PRD §REQ-008 + DECISIONS.md.",
+        "testStrategy": "Unit tests por entidad (validators, invariants). Use cases probados con mocks de puertos via PydanticAI test models. Pyrefly pasa en domain/ + application/.",
+        "priority": "high",
+        "dependencies": [1],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "FastAPI skeleton: 10 endpoints stub + OpenAPI 3.1",
+        "description": "Implementar API REST con 10 endpoints (REQ-001) como stubs que devuelven 501 Not Implemented. Bearer token auth single-org. Idempotency keys. Rate limiting por banco. OpenAPI 3.1 spec auto-generada.",
+        "details": "Endpoints: POST /scrape, GET /jobs/{id}, GET /jobs/{id}/result, POST /jobs/{id}/otp-confirmed, POST /jobs/{id}/cancel, POST /maps/{bank}/proposals/{id}/approve, POST /maps/{bank}/proposals/{id}/reject, GET /banks, GET /accounts, POST /webhooks/test. Middleware: idempotency (header Idempotency-Key + Redis/SQLite store), rate-limit slowapi, auth bearer. Pydantic schemas request/response.",
+        "testStrategy": "TestClient httpx: cada endpoint responde con schema correcto. OpenAPI spec validable con openapi-spec-validator. Auth bloquea sin bearer.",
+        "priority": "high",
+        "dependencies": [2],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Storage adapter SQLite + sqlcipher",
+        "description": "Implementar StoragePort con SQLite cifrada via sqlcipher. Tablas: credentials, jobs, accounts, transactions, dedup_index, audit_log, webhook_outbox. Migrations con alembic. Master passphrase desde env → Argon2id KDF → AES-GCM (REQ-008).",
+        "details": "pysqlcipher3 o sqlite3 con extensión sqlcipher. Argon2id (argon2-cffi) deriva clave de passphrase. AES-GCM encripta values sensibles a nivel campo (creds). Backup del .db es opaco sin passphrase. Tests con DB en tmpfs.",
+        "testStrategy": "Backup file abierto sin passphrase falla (verificación binaria). Argon2 params dentro de OWASP recommendations. Round-trip credentials encrypt/decrypt. Migration up/down funciona.",
+        "priority": "high",
+        "dependencies": [2],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Secret vault: Argon2id + AES-GCM + filter middleware",
+        "description": "Vault que recibe master passphrase env → deriva clave Argon2id → cifra/descifra credentials con AES-GCM. Filter middleware redact que garantiza que credenciales nunca lleguen a logs/Langfuse/OTel/HAR (REQ-016, Issue #1).",
+        "details": "Vault API: encrypt(plaintext, aad)/decrypt(ciphertext, aad). Filter middleware intercepta logging.LogRecord, OTel span attrs, Langfuse traces, Playwright HAR sanitizer. Canary value SECRET_CANARY_VALUE inyectado en CI; grep en artefactos debe devolver 0 hits.",
+        "testStrategy": "Canary CI test: corre scrape mock con SECRET_CANARY_VALUE como password; grep recursivo en logs/HAR/traces falla si aparece. Property-based tests (hypothesis) sobre redact filter.",
+        "priority": "high",
+        "dependencies": [4],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Temporal local setup + worker scaffolding",
+        "description": "docker-compose con Temporal server (dev). Worker Python (temporalio SDK) que registra workflows + activities. Task queue por banco.",
+        "details": "docker-compose.dev.yml: temporal + temporal-ui. Worker entry point que registra ScrapeJobWorkflow + 11 activities (placeholders). Logging structurado con trace_id. Configurable via env (TEMPORAL_HOST, TASK_QUEUE).",
+        "testStrategy": "Worker conecta a Temporal local. UI muestra workflows registrados. Smoke: dispatch un workflow placeholder, verifica completion.",
+        "priority": "high",
+        "dependencies": [1],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "CI pipeline: ruff + pyrefly + pytest + canary redact",
+        "description": "GitHub Actions: lint (ruff check + format), type check (pyrefly), tests (pytest), canary redact test (REQ-016), coverage report. Matrix Python 3.12, 3.13.",
+        "details": "Workflow .github/workflows/ci.yml. Jobs: lint, typecheck, test, canary, build-docs. Cache uv. uv pip compile lockfile check. Codecov upload. Required checks para PR merge.",
+        "testStrategy": "PR de prueba: todos los checks pasan en branch limpio. Inyectar fallo deliberado (lint warning, canary leak): CI bloquea merge.",
+        "priority": "high",
+        "dependencies": [1, 5],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "USER-TEST checkpoint 1: Foundation review",
+        "description": "Validación de usuario al cierre de Phase 1. Verificar: monorepo arranca, FastAPI sirve OpenAPI en /docs, Temporal UI accesible, sqlite cifrada, CI verde, canary test corre.",
+        "details": "Checklist:\n- [ ] uv sync && nx build api OK\n- [ ] curl localhost:8000/docs renderiza\n- [ ] Temporal UI localhost:8233 muestra worker conectado\n- [ ] Backup .db inspeccionado: contenido cifrado\n- [ ] CI corrió canary y redact funcionó\n- [ ] Repo public en GitHub bajo AGPL-3.0",
+        "testStrategy": "Demo en vivo. Si falla algún ítem, rollback a checkpoint anterior con bash .taskmaster/scripts/rollback.sh.",
+        "priority": "high",
+        "dependencies": [3, 4, 5, 6, 7],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Scraper runner Playwright: 9 step types (sin LLM)",
+        "description": "REQ-004. Runner que lee map.json y ejecuta steps secuencialmente: navigate, click, fill, wait_for_selector, wait_for_download, select_date_range, assert_text, extract_table, download_file. CERO llamadas LLM.",
+        "details": "Playwright async API. Cada step type es una función pura (context, step_def) → Result. sensitive_data injection antes de fill (placeholder substitution). Timeout configurable por step. Screenshot on failure. HAR record en debug.",
+        "testStrategy": "Unit por step type. Integration: corre map.json fixture contra HTML estático servido por aiohttp test server. Verifica 0 llamadas a litellm/anthropic/deepseek (mock + assert no_call).",
+        "priority": "high",
+        "dependencies": [2, 6],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "BreakageEvent contract + emit on step failure",
+        "description": "Schema Pydantic BreakageEvent: step_id, step_type, expected, actual, screenshot_path, dom_snapshot, error, timestamp. Emit cuando step falla. Consumido por Judge.",
+        "details": "BreakageEvent inmutable. Persist en jobs.audit_log. screenshot_path apunta a artefacto en sandbox volume. dom_snapshot truncado a 50KB. Webhook event job.failed include breakage payload.",
+        "testStrategy": "Forzar fallo en cada step type. Verifica BreakageEvent capturado con todos los campos. Schema contract test.",
+        "priority": "high",
+        "dependencies": [9],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "HAR record/replay testing infrastructure",
+        "description": "REQ-015. Playwright HAR record en debug mode. Replay engine para integration tests sin pegarle al banco real. Fixtures por banco anonimizados.",
+        "details": "playwright record_har_path + record_har_content omit. Replay con route handler que sirve responses desde HAR. Fixtures en banks/{bank}/fixtures/har/. Anonymizer script que redacta PII antes de commit.",
+        "testStrategy": "Test corre HAR fixture banco_general/login.har, obtiene mismo result que live (golden test). Anonymizer test: input con SSN/cuenta → output redacted.",
+        "priority": "high",
+        "dependencies": [9],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "ScrapeJobWorkflow + 11 activities skeleton",
+        "description": "REQ-002. Workflow Temporal principal con activities: LoginActivity, NavigateActivity, DownloadExcelActivity, ParseExcelActivity, ValidateActivity, JudgeActivity, MapperAgentActivity, RemapperAgentActivity, EmitWebhookActivity, OTPSignalAwaitActivity, AuditLogActivity. Signals: otp_confirmed, remap_approved, cancel_job.",
+        "details": "Workflow determinístico (no datetime.now, no random). Activities son no-determinísticas. OTPSignalAwaitActivity con timeout 4 min (banco expira a 5). Retry policies por tipo de activity. Heartbeat para activities largas.",
+        "testStrategy": "Temporal time-skipping test framework. Replay test: serializar history, re-ejecutar, verifica determinismo. Cada signal probado independientemente.",
+        "priority": "high",
+        "dependencies": [6, 9, 10],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "USER-TEST checkpoint 2: Scraper runner E2E",
+        "description": "Validación Phase 2. Demo: ejecutar map.json fixture mock end-to-end via Temporal workflow. Verifica HAR replay + breakage handling.",
+        "details": "Checklist:\n- [ ] map.json fixture corre 9 step types\n- [ ] Forzar breakage: BreakageEvent capturado, workflow continua a Judge stub\n- [ ] HAR replay produce mismos resultados que primera corrida\n- [ ] 0 llamadas LLM en hot path (assert_no_call mock)\n- [ ] Temporal UI muestra history completa",
+        "testStrategy": "Demo en vivo. Métricas observabilidad capturadas para baseline.",
+        "priority": "high",
+        "dependencies": [11, 12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 14,
+        "title": "Mapper agent: browser-use + Claude vision",
+        "description": "REQ-003. Agente que explora login + dashboard + descarga Excel. Construido sobre librería browser-use (en /Users/mike/Documents/maybe finance/browser-use). Usa sensitive_data para que LLM nunca vea creds plaintext. Emite map.json declarativo.",
+        "details": "browser-use Agent con custom tools: emit_map_step, mark_download_target. allowed_domains restringe a dominio banco. sensitive_data dict con placeholders <USERNAME>/<PASSWORD>. LLM = Claude Sonnet 4.6 vision via LiteLLM. Output validado contra JSON Schema map.v1.json.",
+        "testStrategy": "Smoke contra banco_general fixture (HAR-recorded login flow). Output map.json schema-valid. sensitive_data fuzz test (REQ-019, Issue #3): instrumenta LiteLLM, verifica que plaintext nunca llega al model input.",
+        "priority": "high",
+        "dependencies": [12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 15,
+        "title": "Excel parser DSL engine + helpers whitelisted",
+        "description": "REQ-007. Engine que evalúa parser.json declarativo. Helpers: parse_date, extract_regex, normalize_amount, lookup_table, coalesce, trim, to_upper, to_lower, concat. NO ejecuta Python arbitrario.",
+        "details": "DSL evaluator con AST whitelist (rechaza eval/exec/import). openpyxl para leer Excel. Cada helper es función pura registrada. account_type inference por hoja/título. id_strategy: embedded (extract from cell) vs fingerprint (hash row content). Dedup nivel 1: embedded ID dedup en parser.",
+        "testStrategy": "Property-based fuzz test: input parser.json malicioso (intenta eval, file io, network) → rechazado. Fixtures Excel anonimizados de Banco General → output schema canónico. Sandbox test: helper exec no escapa al filesystem host.",
+        "priority": "high",
+        "dependencies": [2],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 16,
+        "title": "Banco General: primer mapping run + map.json + parser.json",
+        "description": "REQ-012 (Phase 3). Ejecutar Mapper contra Banco General real (creds operador) → produce banks/banco_general/map.json. Escribir parser.json para savings + checking + credit_card. Fixtures HAR + Excel anonimizados commiteados.",
+        "details": "Banco piloto: Banco General. Auth Clave Móvil (push 2FA, no SMS). Sesión expira ~5 min. Sin captcha conocido. Cuentas multi-tipo. Detalle en docs/06-banks/banco-general.md.",
+        "testStrategy": "Validar map.json schema. Ejecutar Scraper runner contra HAR fixture: completa flow login + descarga Excel para 3 tipos cuenta. Parser.json produce N transacciones esperadas (golden file).",
+        "priority": "high",
+        "dependencies": [14, 15],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 17,
+        "title": "Schema canónico unificado + 3-niveles dedup",
+        "description": "Pydantic models cross-package en shared/schemas/. discriminator account_type. Transaction unificado (date, amount, currency, description, merchant, category, balance_after, source_id, fingerprint). Dedup engine 3 niveles (REQ-008): embedded ID → fingerprint hash → fuzzy match transfers cross-account.",
+        "details": "shared/schemas/canonical.py. Fingerprint = sha256(date+amount+description_normalized+account_id). Fuzzy matching para transfers: pareo por amount opuesto + ventana ±2 días + cuentas distintas mismo dueño. Persiste en dedup_index.",
+        "testStrategy": "Fixtures con duplicados intencionales (mismo embedded ID, mismo fingerprint, transfers cross-account). Engine elimina correctamente. Transfer detection precision/recall ≥ 0.9 sobre fixture.",
+        "priority": "high",
+        "dependencies": [4, 15],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 18,
+        "title": "USER-TEST checkpoint 3: Banco General piloto",
+        "description": "Validación Phase 3. Demo end-to-end: POST /scrape → OTP push Clave Móvil → POST /jobs/{id}/otp-confirmed → workflow completa → GET /jobs/{id}/result devuelve N transacciones canónicas dedup.",
+        "details": "Checklist:\n- [ ] map.json banco_general commiteado\n- [ ] parser.json para 3 tipos cuenta\n- [ ] Demo en vivo: scrape real con creds operador\n- [ ] Transacciones canónicas (no Excel raw)\n- [ ] Dedup nivel 1+2 funciona\n- [ ] LLM cost del job ≤ $0.50",
+        "testStrategy": "Demo controlada. Capturar métricas: tiempo total, $ LLM, tokens, success rate.",
+        "priority": "high",
+        "dependencies": [16, 17],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 19,
+        "title": "Validator + Judge agents (PydanticAI + DeepSeek)",
+        "description": "REQ-005. Validator hace checks heurísticos + LLM cuando ambiguo. Judge analiza BreakageEvent + screenshot y decide ruta (retry / partial_remap / full_remap / abort / human_required) + confidence + risk.",
+        "details": "PydanticAI Agent con structured output JudgeDecision { route, confidence: float, risk: enum[low,medium,high], reasoning }. LLM = DeepSeek V3 via LiteLLM (cost near-zero). Validator es heurístico-first; LLM solo si heurístico inconcluso. Judge recibe BreakageEvent + screenshot embedded base64 (vision-capable model).",
+        "testStrategy": "Fixture set de BreakageEvents conocidos + screenshots → JudgeDecision esperado (golden). Cost per judge call < $0.001. PydanticAI test models para unit tests sin gastar tokens.",
+        "priority": "high",
+        "dependencies": [10, 12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 20,
+        "title": "Remapper agent + dry-run validation",
+        "description": "REQ-006. Re-explora la zona afectada (usando browser-use) y emite patch al map.json. Dry-run validation antes de full apply (sin enviar creds reales). Auto-apply si Judge dice confidence ≥ 0.85 AND risk == low.",
+        "details": "RemapperAgent con browser-use limitado al subset del flow. Output: MapPatch (JSON Patch RFC 6902). Dry-run: aplica patch sobre map.json, ejecuta scraper en sandbox con creds dummy + HTML actual del banco, verifica steps no-fail. Si OK → ApplyMapPatch activity (git commit + tag).",
+        "testStrategy": "Simulate UI change: modificar HAR fixture (selector renombrado). Remapper produce patch correcto, dry-run pasa. Test: confidence < 0.85 → no auto-apply, emite job.remap_proposed webhook.",
+        "priority": "high",
+        "dependencies": [14, 19],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 21,
+        "title": "Proposal endpoints + TTL + git apply (HITL flow)",
+        "description": "Endpoints POST /maps/{bank}/proposals/{id}/approve|reject. TTL configurable (default 7d, expira a rejected). Aplicación via git commit en banks/{bank}/map.json. Webhook job.remap_proposed + job.human_required.",
+        "details": "Tabla map_proposals (id, bank, patch_json, judge_decision, status, created_at, expires_at). Approve → ApplyMapPatch activity. Reject → status=rejected. Cron cleanup expired. Audit log con quien aprobó (operator_id desde bearer token).",
+        "testStrategy": "Approve flow: proposal pending → POST approve → git log muestra commit, map.json updated, webhook emitted. Reject flow + TTL expiry tests.",
+        "priority": "high",
+        "dependencies": [20],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 22,
+        "title": "USER-TEST checkpoint 4: Self-healing flow",
+        "description": "Validación Phase 4. Demo: simular cambio UI banco → BreakageEvent → Judge decide remap → Remapper produce patch → auto-apply (alta confidence) o HITL (baja confidence) → re-corrida exitosa.",
+        "details": "Checklist:\n- [ ] Inyectar HAR modificado (selector cambiado)\n- [ ] Workflow detecta breakage, llama Judge\n- [ ] Auto-apply path: patch aplicado sin intervención\n- [ ] HITL path: webhook recibido, approve via API, patch aplicado\n- [ ] Re-scrape post-patch exitoso",
+        "testStrategy": "2 demos (auto y HITL). Métricas: tiempo decisión Judge, tiempo total recovery.",
+        "priority": "high",
+        "dependencies": [21],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 23,
+        "title": "Sandbox Docker per-job + network policies",
+        "description": "REQ-009. Container efímero por scrape. Network allowlist (dominio banco + APIs LLM). Caps dropped, seccomp, AppArmor, read-only rootfs (excepto tmpfs + /downloads), no-new-privileges, non-root user, resource limits.",
+        "details": "Dockerfile sandbox image (Playwright + Python). docker run --network sandbox-net --cap-drop=ALL --read-only --tmpfs /tmp --user 1000 --pids-limit 200 --memory 2g --cpus 1.5. Network allowlist via iptables/network policy o DNS-based (allowed_domains en browser-use). Container destroyed on workflow complete/fail.",
+        "testStrategy": "Smoke endpoints prohibidos: container intenta GET https://example.com → bloqueado. Container intenta escribir / → read-only. Process count > limit → killed. Resource exhaust → kernel OOM, no host impact.",
+        "priority": "high",
+        "dependencies": [12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 24,
+        "title": "docker-socket-proxy hardening + smoke tests",
+        "description": "REQ-018, Issue #2. Si worker necesita acceso al socket Docker para spawn sandbox containers, usar tecnomancy/docker-socket-proxy con allowlist mínima. Smoke test endpoints prohibidos.",
+        "details": "docker-compose service socket-proxy. Worker conecta vía proxy, no socket directo. ENV CONTAINERS=1, NETWORKS=1, BUILD=0, EXEC=0, etc. Smoke: GET /containers/json (allowed) vs DELETE /networks/host (blocked).",
+        "testStrategy": "Suite de pytest: cada endpoint Docker API verificado allow/deny según whitelist. Compromise simulation: credentials leaked, attacker tries privileged ops via socket → fails.",
+        "priority": "medium",
+        "dependencies": [23],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "Webhooks HMAC-SHA256 + retry + DLQ + /time endpoint",
+        "description": "REQ-010, REQ-020. 7 eventos webhook. Header X-OpenBanca-Signature: t=<ts>,v1=<hmac>. Retry exponential 6 intentos en 24h. Anti-replay window ±5 min. Endpoint /time para diagnosis clock skew. DLQ si excede retry budget.",
+        "details": "Eventos: job.created, job.otp_required, job.progress, job.completed, job.failed, job.remap_proposed, job.human_required. Tabla webhook_outbox (id, event, payload, signature, attempts, next_retry_at, dlq). Worker async procesa outbox. Endpoint GET /time devuelve UTC timestamp ISO + monotonic.",
+        "testStrategy": "Cliente test verifica firma HMAC contra payload + secret. Replay attack (mismo timestamp viejo) → rechazado. Forzar 6 fallos → DLQ. /time vs system clock match.",
+        "priority": "high",
+        "dependencies": [12],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 26,
+        "title": "Cost guardrails enforcement",
+        "description": "REQ-011. Max $0.50 LLM/job, max 3 remap attempts/24h por banco, max 1 mapping run/24h por banco, max 2 logins fallidos consecutivos → circuit breaker 1h, max tokens per agent per job.",
+        "details": "Middleware central LLMCostTracker (intercepta LiteLLM responses, suma usage * pricing). Tabla rate_limits (bank, op, count, window_start). Circuit breaker estado in-memory + persisted. Si exceeded: workflow fails con job.failed reason=budget_exceeded.",
+        "testStrategy": "Forzar límites en test (override config a thresholds bajos). Verifica abort + reason correcto + webhook emitted. Concurrent jobs no race.",
+        "priority": "high",
+        "dependencies": [12, 25],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Observabilidad: Langfuse self-hosted opcional + OTel",
+        "description": "REQ-013, REQ-014. Langfuse docker-compose service con profile langfuse (off por default). Trazas LLM (Mapper/Validator/Judge/Remapper). OTel para API + Temporal + Sandbox. trace_id propagado end-to-end.",
+        "details": "LiteLLM callback Langfuse (opcional). OpenTelemetry SDK con OTLP exporter (configurable: jaeger, tempo, console). Trace context propagation: HTTP header → Temporal context → sandbox env. Langfuse profile en docker-compose, off por default mantiene principio self-host puro.",
+        "testStrategy": "Profile off: stack arranca sin Langfuse. Profile on: trazas LLM visibles en UI. OTel trace muestra job end-to-end (API → Workflow → Activity → Sandbox).",
+        "priority": "medium",
+        "dependencies": [25],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 28,
+        "title": "Community maps trust model: linter 12 reglas + cosign keyless",
+        "description": "REQ-017, Issue #4. Linter para community-submitted map.json (12 reglas: no eval, allowed step types, sensitive_data placeholders válidos, allowed_domains coincide con banco, etc.). Maps oficiales firmados con cosign keyless GitHub OIDC.",
+        "details": "scripts/lint-map.py. Reglas en docs/04-security/community-maps.md. Pipeline GitHub Actions valida PRs community → linter + sign con cosign --keyless --identity-token=$ACTIONS_ID_TOKEN. Verificación en runtime al cargar map: cosign verify-blob.",
+        "testStrategy": "Linter test: 12 fixtures rule-violating + happy path. PR community simulado: workflow corre lint, sign, verify. Map sin firma → runtime rechaza.",
+        "priority": "medium",
+        "dependencies": [16],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 29,
+        "title": "USER-TEST checkpoint 5: Operations + security",
+        "description": "Validación Phase 5. Auditoría: 5 issues de seguridad (Issues #1-#5) cerrados. Sandbox compromiso simulation. Webhook signature verificada por cliente externo. Cost guardrails activos.",
+        "details": "Checklist:\n- [ ] Issue #1 (canary redact): green\n- [ ] Issue #2 (docker-socket-proxy): smoke pasa\n- [ ] Issue #3 (sensitive_data fuzz): plaintext nunca llega LLM\n- [ ] Issue #4 (community maps): linter + cosign\n- [ ] Issue #5 (clock skew /time): endpoint live\n- [ ] Sandbox escape attempt simulado: contenido\n- [ ] Cost guardrail forzado: aborta correctamente",
+        "testStrategy": "Auditoría manual + scripts automated checks (.taskmaster/scripts/security-audit.py).",
+        "priority": "high",
+        "dependencies": [23, 24, 25, 26, 27, 28],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 30,
+        "title": "v1.0.0 release: E2E smoke 3 betatesters + stress 100 scrapes + docs + tag",
+        "description": "Phase 6. E2E smoke con creds reales (3 betatesters distintos, distintos perfiles cuentas). Stress test 100 scrapes secuenciales/concurrentes. Documentación completa. v1.0.0 git tag + release notes en GitHub. AGPL-3.0 confirmada.",
+        "details": "Betatesters: 3 perfiles (1 cuenta, 4 cuentas, ex-cliente con TC vencida). Stress 100 scrapes: medir success rate (target ≥ 95% REQ-012 AC), p50/p95 latency, $ total LLM, breakages capturados. Docs: README quickstart, docs/05-operations/deployment.md, docs/06-banks/banco-general.md final. Release notes con highlights + known limitations.",
+        "testStrategy": "Métricas finales documentadas. Si success rate < 95%, no release; root-cause y fix antes de tag. Verificar AGPL-3.0 LICENSE + headers en source files.",
+        "priority": "high",
+        "dependencies": [29],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2026-05-10T19:25:00.000Z",
+      "updated": "2026-05-10T19:25:00.000Z",
+      "description": "open-banca v1: API REST self-hosted AGPL-3.0 que scrapea bancos PA via agentes IA + Temporal + browser-use. Banco piloto Banco General. 30 tasks alineados a 6 fases (Foundation, Scraper runner, Mapper + piloto, Self-healing, Operations + security, Hardening + release). 5 USER-TEST checkpoints (tasks 8, 13, 18, 22, 29). PRD: .taskmaster/docs/prd.txt (100% EXCELLENT, 13/13 checks)."
+    }
+  }
+}

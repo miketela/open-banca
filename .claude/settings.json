@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-doc-drift.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'p=\"${CLAUDE_TOOL_INPUT_file_path:-}\"; case \"$p\" in *docs/adr/*|*DECISIONS.md) printf \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"ADR/DECISIONS modificado — verifica consistencia con docs/README.md.\\\"}}\\n\";; esac'"
+          }
+        ]
+      }
+    ]
+  }
+}
