@@ -4,6 +4,22 @@ version = "0.1.0"
 description = "Storage adapter: SQLite repositories and sqlcipher secrets"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    # SQLCipher Python bindings — platform-conditional:
+    #   macOS:  pysqlcipher3 — requires `brew install sqlcipher` before install.
+    #           Build flags needed: LDFLAGS=-L$(brew --prefix sqlcipher)/lib
+    #           CPPFLAGS=-I$(brew --prefix sqlcipher)/include
+    #   Linux:  sqlcipher3-binary ships a static manylinux wheel (no compile).
+    #           Only has wheels for manylinux x86_64 (CI Linux runners).
+    "pysqlcipher3; sys_platform == 'darwin'",
+    "sqlcipher3-binary>=0.5.3; sys_platform == 'linux'",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "open-banca-domain",
+]
+
+[tool.uv.sources]
+open-banca-domain = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
