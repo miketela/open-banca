@@ -18,6 +18,7 @@ members = [
     "packages/adapters/parsing",
     "packages/adapters/sandbox",
     "packages/adapters/observability",
+    "packages/adapters/webhooks",
     "packages/banks/banco_general",
     "packages/shared/schemas",
     "packages/cli",
@@ -32,6 +33,7 @@ dev = [
     "hypothesis>=6.130.0",
     "pre-commit>=4.0.0",
     "detect-secrets>=1.5.0",
+    "respx>=0.22",
 ]
 
 [tool.ruff]
@@ -59,6 +61,7 @@ known-first-party = [
     "open_banca_parsing",
     "open_banca_sandbox",
     "open_banca_observability",
+    "open_banca_webhooks",
     "open_banca_banco_general",
     "open_banca_schemas",
     "open_banca_cli",
@@ -85,6 +88,7 @@ search_path = [
     "packages/adapters/parsing/src",
     "packages/adapters/sandbox/src",
     "packages/adapters/observability/src",
+    "packages/adapters/webhooks/src",
     "packages/banks/banco_general/src",
     "packages/shared/schemas/src",
     "packages/cli/src",
@@ -114,6 +118,7 @@ pythonpath = [
     "packages/adapters/parsing/src",
     "packages/adapters/sandbox/src",
     "packages/adapters/observability/src",
+    "packages/adapters/webhooks/src",
     "packages/banks/banco_general/src",
     "packages/shared/schemas/src",
     "packages/cli/src",
