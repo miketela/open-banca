@@ -1,0 +1,36 @@
+{
+  "name": "application",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/application/src",
+  "tags": [
+    "scope:application",
+    "layer:application"
+  ],
+  "implicitDependencies": [
+    "domain"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check packages/application",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pyrefly check packages/application/src",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest packages/application/tests -v",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

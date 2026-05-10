@@ -1,0 +1,114 @@
+[project]
+name = "open-banca"
+version = "0.1.0"
+description = "Self-hosted API for automated bank data capture in Panama using AI agents"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0" }
+readme = "README.md"
+
+[tool.uv.workspace]
+members = [
+    "packages/domain",
+    "packages/application",
+    "packages/adapters/api",
+    "packages/adapters/orchestrator",
+    "packages/adapters/browser",
+    "packages/adapters/llm",
+    "packages/adapters/storage",
+    "packages/adapters/parsing",
+    "packages/adapters/sandbox",
+    "packages/adapters/observability",
+    "packages/banks/banco_general",
+    "packages/shared/schemas",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0",
+    "pyrefly>=0.64.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "hypothesis>=6.130.0",
+    "pre-commit>=4.0.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["packages"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "RUF", "ANN"]
+ignore = [
+    "ANN401",  # Dynamically typed expressions (Any)
+    "E501",    # line too long (handled by formatter)
+]
+per-file-ignores = { "**/__init__.py" = ["F401", "ANN"], "**/tests/**" = ["ANN", "S101", "RUF100"] }
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "open_banca_domain",
+    "open_banca_application",
+    "open_banca_api",
+    "open_banca_orchestrator",
+    "open_banca_browser",
+    "open_banca_llm",
+    "open_banca_storage",
+    "open_banca_parsing",
+    "open_banca_sandbox",
+    "open_banca_observability",
+    "open_banca_banco_general",
+    "open_banca_schemas",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pyrefly]
+project_root = "."
+python_version = "3.12"
+strict = true
+ignore_missing_imports = false
+search_path = [
+    "packages/domain/src",
+    "packages/application/src",
+    "packages/adapters/api/src",
+    "packages/adapters/orchestrator/src",
+    "packages/adapters/browser/src",
+    "packages/adapters/llm/src",
+    "packages/adapters/storage/src",
+    "packages/adapters/parsing/src",
+    "packages/adapters/sandbox/src",
+    "packages/adapters/observability/src",
+    "packages/banks/banco_general/src",
+    "packages/shared/schemas/src",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["packages"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+markers = [
+    "live: mark test as requiring live bank credentials (deselect with '-m not live')",
+    "unit: fast unit tests with no external dependencies",
+    "integration: tests requiring external services",
+]
+addopts = "-ra --tb=short -q --import-mode=importlib"
+
+pythonpath = [
+    "packages/domain/src",
+    "packages/application/src",
+    "packages/adapters/api/src",
+    "packages/adapters/orchestrator/src",
+    "packages/adapters/browser/src",
+    "packages/adapters/llm/src",
+    "packages/adapters/storage/src",
+    "packages/adapters/parsing/src",
+    "packages/adapters/sandbox/src",
+    "packages/adapters/observability/src",
+    "packages/banks/banco_general/src",
+    "packages/shared/schemas/src",
+]

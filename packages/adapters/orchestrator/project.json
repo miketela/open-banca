@@ -1,0 +1,37 @@
+{
+  "name": "orchestrator",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/adapters/orchestrator/src",
+  "tags": [
+    "scope:orchestrator",
+    "layer:adapter"
+  ],
+  "implicitDependencies": [
+    "application",
+    "domain"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check packages/adapters/orchestrator",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pyrefly check packages/adapters/orchestrator/src",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest packages/adapters/orchestrator/tests -v",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

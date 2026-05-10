@@ -1,0 +1,37 @@
+{
+  "name": "browser",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/adapters/browser/src",
+  "tags": [
+    "scope:browser",
+    "layer:adapter"
+  ],
+  "implicitDependencies": [
+    "application",
+    "domain"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check packages/adapters/browser",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pyrefly check packages/adapters/browser/src",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest packages/adapters/browser/tests -v",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}
