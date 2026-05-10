@@ -117,6 +117,15 @@ flowchart TD
 - No persiste decisiones — el workflow lo hace en su event ledger.
 - No mira data financiera real, sólo metadata y estructura — minimiza superficie de leak vía LLM logs.
 
+### Pre-LLM PII redact filter
+
+Aunque el Judge opera sobre metadata estructural y no sobre screenshots del banco logueado, el DOM textual que recibe como `map_excerpt` puede contener fragmentos con PII si el Scraper Runner emitió evidencia de ruptura con texto del DOM en crudo. El filter middleware actúa sobre todos los mensajes enviados a LiteLLM / DeepSeek V3, incluyendo los del Judge:
+
+- **Capa 1 (texto)**: regex redacta números de cuenta, nombres y saldos numéricos antes del envío al provider.
+- La Capa 2 (imagen) no aplica al Judge (usa texto, no vision — ver [ADR-0006](../adr/0006-vision-split-claude-deepseek.md)).
+
+Ver [ADR-0020 — PII redact at LLM boundary](../adr/0020-pii-redact-llm-boundary.md) y amenaza **T18** en el threat model.
+
 ## Referencias
 
 - ADR-0013 confidence threshold: [`../adr/0013-confidence-threshold-remap.md`](../adr/0013-confidence-threshold-remap.md).
