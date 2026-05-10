@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+build/
+dist/
+*.egg
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# uv
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pyrefly_cache/
+
+# Project artifacts
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+data/
+downloads/
+har/
+screenshots/
+traces/
+
+# Secrets
+*.key
+*.pem
+*.p12
+secrets/
+
+# Nx
+node_modules/
+dist/
+.nx/
+tmp/
+
+# Temporal
+temporal-data/
+
+# Docker
+.docker/
+
+# Logs
+*.log
+logs/
