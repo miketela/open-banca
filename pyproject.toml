@@ -20,6 +20,7 @@ members = [
     "packages/adapters/observability",
     "packages/banks/banco_general",
     "packages/shared/schemas",
+    "packages/cli",
 ]
 
 [dependency-groups]
@@ -60,6 +61,7 @@ known-first-party = [
     "open_banca_observability",
     "open_banca_banco_general",
     "open_banca_schemas",
+    "open_banca_cli",
 ]
 
 [tool.ruff.format]
@@ -85,6 +87,7 @@ search_path = [
     "packages/adapters/observability/src",
     "packages/banks/banco_general/src",
     "packages/shared/schemas/src",
+    "packages/cli/src",
 ]
 
 [tool.pytest.ini_options]
@@ -113,4 +116,5 @@ pythonpath = [
     "packages/adapters/observability/src",
     "packages/banks/banco_general/src",
     "packages/shared/schemas/src",
+    "packages/cli/src",
 ]

@@ -7,13 +7,14 @@ from open_banca_storage.kdf import Argon2idKeyDerivation, derive_row_key, wipe_r
 from open_banca_storage.migrations import migrate
 from open_banca_storage.mlock_boot_check import BootSecurityError, run_boot_check
 from open_banca_storage.repositories import BreakageRepository, SqliteJobStore
-from open_banca_storage.secret_vault import SecretVault
+from open_banca_storage.secret_vault import CredentialSummary, SecretVault
 
 __all__ = [
     "Argon2idKeyDerivation",
     "BootSecurityError",
     "BreakageRepository",
     "ConnectionPool",
+    "CredentialSummary",
     "DedupEngine",
     "IngestResult",
     "KeyDerivation",

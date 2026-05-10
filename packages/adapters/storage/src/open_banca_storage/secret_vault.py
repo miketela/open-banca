@@ -37,6 +37,7 @@ import logging
 import os
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,6 +49,20 @@ from open_banca_storage.connection import ConnectionPool
 from open_banca_storage.kdf import Argon2idKeyDerivation, derive_row_key, wipe_row_key
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CredentialSummary:
+    """Read-only summary of a stored credential — no plaintext.
+
+    Returned by :meth:`SecretVault.list_credentials` for display purposes.
+    """
+
+    id: str
+    bank: str
+    label: str
+    created_at: str
+
 
 # Additional authenticated data bound to ciphertext (prevents cross-row replay).
 _AAD_PREFIX = b"open_banca:vault:v1:"
@@ -312,6 +327,26 @@ class SecretVault:
         except Exception:
             # Audit failure must not block the primary operation; log and continue.
             logger.warning("vault: failed to write audit log entry for action=%s", action)
+
+    def list_credentials(self) -> list[CredentialSummary]:
+        """Return metadata for all stored credentials (no plaintext).
+
+        Query-side helper used by the CLI ``list-credentials`` command.
+        Returns a list of :class:`CredentialSummary` dataclasses with
+        ``id``, ``bank``, ``label``, and ``created_at`` fields.
+
+        This method is intentionally NOT part of ``SecretStorePort`` because
+        listing without plaintext is a read-model / query-side concern and
+        does not belong in the domain port.
+        """
+        conn = self._pool.get()
+        rows = conn.execute(
+            "SELECT id, bank, label, created_at FROM credentials ORDER BY created_at"
+        ).fetchall()
+        return [
+            CredentialSummary(id=r[0], bank=r[1], label=r[2], created_at=r[3])
+            for r in rows
+        ]
 
     def close(self) -> None:
         """Zeroize the master passphrase buffer.
