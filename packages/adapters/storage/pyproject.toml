@@ -16,6 +16,8 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "open-banca-domain",
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
 ]
 
 [tool.uv.sources]
