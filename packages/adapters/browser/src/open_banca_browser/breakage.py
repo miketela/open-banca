@@ -17,6 +17,8 @@ def build_breakage_event(
     screenshot_png: bytes,
     page: object,
     selector: str | None = None,
+    expected: str | None = None,
+    observed: str | None = None,
 ) -> BreakageEvent:
     """Construct a BreakageEvent from a step failure.
 
@@ -27,7 +29,9 @@ def build_breakage_event(
         error: The exception that caused the breakage.
         screenshot_png: PNG bytes captured after failure.
         page: Playwright Page object (used to extract DOM excerpt).
-        selector: Optional selector to narrow DOM excerpt.
+        selector: Optional CSS/XPath selector that was attempted.
+        expected: Optional expected value or state from the step spec.
+        observed: Optional actual value or state at failure time.
 
     Returns:
         An immutable BreakageEvent domain entity.
@@ -48,4 +52,7 @@ def build_breakage_event(
         dom_excerpt=excerpt,
         occurred_at=datetime.now(tz=UTC),
         http_status=http_status,
+        selector_attempted=selector,
+        expected=expected,
+        observed=observed,
     )
