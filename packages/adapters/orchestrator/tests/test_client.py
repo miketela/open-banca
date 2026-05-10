@@ -42,7 +42,7 @@ async def test_get_client_without_explicit_settings() -> None:
     """get_client() falls back to get_settings() when no settings passed."""
     async with await WorkflowEnvironment.start_time_skipping() as env:
         # Override the default address so the client connects to the test server
-        import os
+        import os  # noqa: PLC0415
 
         original = os.environ.get("OPEN_BANCA_TEMPORAL_ADDRESS")
         os.environ["OPEN_BANCA_TEMPORAL_ADDRESS"] = (
