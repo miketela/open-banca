@@ -817,6 +817,16 @@ requires-dist = [{ name = "httpx", specifier = ">=0.27.0" }]
 name = "open-banca-schemas"
 version = "0.1.0"
 source = { editable = "packages/shared/schemas" }
+dependencies = [
+    { name = "open-banca-domain" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "open-banca-domain", editable = "packages/domain" },
+    { name = "pydantic", specifier = ">=2.7" },
+]
 
 [[package]]
 name = "open-banca-storage"
