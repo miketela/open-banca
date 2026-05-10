@@ -143,23 +143,55 @@ El API validará automáticamente M-1, M-2 y M-3 al arrancar y terminará con ex
 
 Referencias de amenaza: CWE-244 (heap memory not cleared), CWE-528 (core dump exposure). Detalle técnico en [`../04-security/secrets-at-rest.md`](../04-security/secrets-at-rest.md) §Memory protection — hard requirements y [`../adr/0008-amendment-mlock.md`](../adr/0008-amendment-mlock.md).
 
+## docker-compose.yml — configuración final (Task 33)
+
+El compose final incluye los siguientes servicios:
+
+| Servicio | Imagen | Profile | Healthcheck | Resource limits |
+|----------|--------|---------|-------------|-----------------|
+| `docker-socket-proxy` | `tecnativa/docker-socket-proxy` | (default) | `wget http://localhost:2375/_ping` | 0.5 CPU / 256M |
+| `postgres-temporal` | `postgres:16-alpine` | (default) | `pg_isready` | 1.0 CPU / 512M |
+| `temporal-server` | `temporalio/auto-setup:1.27.2` | (default) | `tctl cluster health` | 1.0 CPU / 768M |
+| `temporal-ui` | `temporalio/ui:2.35.0` | `ui` | (none) | 0.5 CPU / 256M |
+| `api` | build local (target: runtime) | (default) | `curl /healthz` | 1.0 CPU / 512M |
+| `temporal-worker` | build local (target: runtime) | (default) | python exit(0) | 2.0 CPU / 1G |
+| `sandbox-runner` | build local (sandbox/Dockerfile) | `build-only` | n/a (ephemeral) | per-spawn ADR-0009 |
+| `langfuse` | `langfuse/langfuse` | `langfuse` | `curl /api/public/health` | 1.0 CPU / 1G |
+| `postgres-langfuse` | `postgres:16-alpine` | `langfuse` | `pg_isready` | 0.5 CPU / 256M |
+
+Notas de implementación:
+
+- `api` y `temporal-worker` usan la **misma imagen** (`open-banca:latest`, target `runtime`). El `command:` en compose diferencia el entrypoint.
+- `sandbox-runner` está en profile `build-only`: `docker compose build sandbox-runner` lo construye pero `docker compose up` no lo arranca. El worker lo spawnea per-job con flags ADR-0009.
+- `OPEN_BANCA_MASTER_PASSPHRASE` se pasa como env var (Security Critical Rule #6). No como Docker secret (v1).
+- `open-banca-internal`: `internal=false` intencional — el worker necesita egress para pull de imágenes sandbox y LLM APIs.
+- Todos los servicios tienen `ulimits.core: soft=0, hard=0` (M-4).
+
 ## Primer arranque
 
 Secuencia esperada:
 
 1. Operador clona repo + edita `.env` (API keys LLM, master passphrase, webhook HMAC secret).
-2. `docker compose up -d`.
-3. `api` levanta: detecta DB no existente, prompta creación → cifra con master passphrase, corre migraciones, registra usuario admin con `API_KEY`.
-4. `temporal` y `postgres-temporal` se inicializan, namespace creado.
-5. `temporal-worker` registra activities/workflows, queda listo en task queue.
-6. Operador hace primer `POST /banks` con `bank_id=banco_general` (mapping pre-existente del repo) o dispara `POST /banks/{id}/map` para correr Mapper desde cero.
-7. Operador hace primer `POST /credentials` con su user/pass de Banco General (cifrado en el vault).
-8. Primer `POST /scrape` → flujo descrito en docs.
+2. Completar checklist M-1..M-7 (swap desactivado, swappiness=0, etc.).
+3. `docker compose build api && docker compose build sandbox-runner`.
+4. `docker compose up -d`.
+5. `api` levanta: detecta DB no existente, prompta creación → cifra con master passphrase, corre migraciones, registra usuario admin con `API_KEY`.
+6. `temporal` y `postgres-temporal` se inicializan, namespace creado.
+7. `temporal-worker` registra activities/workflows, queda listo en task queue.
+8. Operador hace primer `POST /banks` con `bank_id=banco_general` (mapping pre-existente del repo) o dispara `POST /banks/{id}/map` para correr Mapper desde cero.
+9. Operador hace primer `POST /credentials` con su user/pass de Banco General (cifrado en el vault).
+10. Primer `POST /scrape` → flujo descrito en docs.
 
 Health endpoints:
 
 - `GET /healthz` — liveness simple.
 - `GET /readyz` — checa conexión a Temporal + DB desbloqueada + worker registrado.
+
+Smoke test automatizado (valida config + healthchecks + endpoints):
+
+```bash
+bash scripts/smoke_compose.sh
+```
 
 ## Verificación post-deploy: docker-socket-proxy (REQ-018, obligatorio)
 
