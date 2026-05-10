@@ -114,6 +114,95 @@ Test CI obligatorios:
 - Test que ejecuta un scrape con cred sintética conocida (`SECRET_CANARY_VALUE`) y graba traces Langfuse + OTel + HAR en filesystem; al final, grep por el valor canario debe devolver 0 ocurrencias.
 - Test que verifica que el filter middleware tiene allowlist por defecto-deny (no opt-in nuevos campos).
 
+## Memory protection — hard requirements
+
+La passphrase maestra y las derived keys (db_key, row_key) son strings Python en heap sin protección de OS por defecto. Si el proceso es swapeado o produce un core dump, esos bytes aparecen en disco en claro. Esto colapsa la defense-in-depth de sqlcipher + AES-GCM. Las siguientes medidas son **obligatorias** (no recomendadas) para cualquier deployment de producción.
+
+### mlock obligatorio para passphrase y derived keys
+
+La passphrase y toda key derivada de ella deben residir en páginas marcadas con `mlock(2)` para que el kernel no las swapee a disco, y con `madvise(MADV_DONTDUMP)` para excluirlas de core dumps.
+
+Mecanismo de implementación — se elige **opción A como default**; opción B como fallback explícito si la plataforma no soporta la opción A:
+
+- **Opción A (default) — `cryptography` C-extension**: La librería `cryptography` (PyCA) expone buffers de tipo `cryptography.hazmat.primitives.ciphers.aead` y sus tipos de key internos que, cuando se construyen desde el backend OpenSSL, ya residen en buffers C con `mlock` aplicado por OpenSSL en plataformas que lo soportan. El Secret Vault **debe** construir sus keys como objetos `cryptography` nativos y no copiarlos a `str`/`bytes` Python ordinarios más allá del tiempo estrictamente necesario para la KDF.
+
+- **Opción B (fallback) — `mlock(2)` directo via `ctypes`**: Si el framework de la opción A no puede garantizar mlock para un buffer específico (p.ej. salida raw de Argon2id antes de pasarla a AES-GCM), se llama `ctypes.cdll.LoadLibrary(None).mlock(ptr, size)` sobre el buffer `bytearray` y se combina con `madvise(MADV_DONTDUMP)` antes de cualquier uso. El wipe post-uso sobreescribe el buffer con ceros antes de liberarlo (`secrets.token_bytes` length-matched overwrite).
+
+Referencia de amenaza: **CWE-244** — Improper Clearing of Heap Memory Before Release. El heap Python puede dejar residuos de passphrase en páginas que el GC no limpia de inmediato; mlock + wipe explícito es la única defensa confiable.
+
+### swap deshabilitado en host runner
+
+El host (físico o VM) que corre los containers del API debe tener swap desactivado antes de arrancar los servicios:
+
+```bash
+# Apagar swap en caliente (host runner, antes de docker compose up):
+swapoff -a
+
+# Eliminar swap permanentemente (editar /etc/fstab):
+# Comentar o eliminar la línea con 'swap' en /etc/fstab.
+
+# Verificar:
+swapon --show   # debe retornar vacío
+cat /proc/swaps # debe tener solo la cabecera
+```
+
+En entornos cloud (EC2, GCP VM, VPS), asegurarse de que la instancia no tenga swap volume / swap file configurado. El operador debe documentar el estado de swap en su runbook de plataforma.
+
+### core dumps deshabilitados
+
+Core dumps deben estar deshabilitados a dos niveles:
+
+**docker-compose (servicio `api` y `temporal-worker`):**
+
+```yaml
+# docker-compose.yml (fragmento normativo):
+services:
+  api:
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+  temporal-worker:
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+```
+
+**systemd (si el container corre bajo systemd service):**
+
+```ini
+# /etc/systemd/system/open-banca-api.service (fragmento):
+[Service]
+LimitCORE=0
+```
+
+El flag `LimitCORE=0` en systemd y `ulimit -c 0` en el entorno de shell del proceso son equivalentes y deben aplicarse ambos.
+
+Referencia de amenaza: **CWE-528** — Exposure of Core Dump File to an Unauthorized Control Sphere. Un core dump del proceso API en producción contiene el heap completo incluyendo passphrase en claro y todos los row_keys activos en memoria en ese instante.
+
+### boot-time check: API se niega a arrancar si swap activo o swappiness != 0
+
+El API FastAPI debe ejecutar al inicio (antes de aceptar cualquier request, después de leer env vars) una verificación de seguridad de memoria. Si falla, el proceso termina con **exit code 1** y log estructurado de error; no hay override flag (la protección no puede deshabilitarse en producción).
+
+Comportamiento esperado:
+
+```
+# Condición de fallo 1:
+/proc/sys/vm/swappiness != "0"
+→ LOG ERROR: {"event": "startup_security_check_failed", "check": "swappiness", "value": <actual>, "required": 0}
+→ sys.exit(1)
+
+# Condición de fallo 2:
+/proc/swaps contiene alguna línea más allá de la cabecera (swap activo)
+→ LOG ERROR: {"event": "startup_security_check_failed", "check": "swap_active", "devices": [<lista>]}
+→ sys.exit(1)
+```
+
+En entornos de desarrollo local (donde el operador no puede deshabilitar swap en su máquina), la variable de entorno `OPEN_BANCA_ENV=development` desactiva el check. Esta variable **no puede** tomar el valor `development` en el docker-compose de producción — el CI verifica que el compose de producción tenga `OPEN_BANCA_ENV=production` o la variable ausente.
+
+La verificación es responsabilidad del módulo de arranque del API (`adapters/api/startup_checks.py` o equivalente) y debe tener tests unitarios con filesystem mock.
+
 ## Riesgos residuales
 
 - **Operador hostil con master passphrase**: puede descifrar todas las cred. Modelo de amenaza single-org acepta esto explícitamente.

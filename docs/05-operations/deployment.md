@@ -88,6 +88,60 @@ flowchart TD
 - `temporal`, `worker`, `postgres`, `langfuse`: nunca expuestos al host. Acceso vía `docker exec` o port-forward temporal del operador.
 - `sandbox-runner`: aislado en su propia network por job; sin acceso a la red interna de servicios.
 
+## Checklist de seguridad de memoria — obligatorio antes del primer arranque
+
+Las siguientes verificaciones deben completarse en el host **antes** de ejecutar `docker compose up` en producción. El API se niega a arrancar si detecta swap activo. El operador es responsable de cumplir este checklist y documentarlo en su runbook de plataforma.
+
+| # | Verificación | Comando de comprobación | Resultado esperado | Referencia |
+|---|-------------|------------------------|-------------------|------------|
+| M-1 | Swap desactivado en caliente | `swapon --show` | Sin output (vacío) | ADR-0008-amendment §2 |
+| M-2 | Swap desactivado en /proc | `cat /proc/swaps` | Solo línea de cabecera | ADR-0008-amendment §2 |
+| M-3 | swappiness = 0 | `cat /proc/sys/vm/swappiness` | `0` | ADR-0008-amendment §4 |
+| M-4 | core dump limit = 0 en docker-compose | Ver `ulimits.core` en `docker-compose.yml` para servicios `api` y `temporal-worker` | `soft: 0, hard: 0` | ADR-0008-amendment §3 |
+| M-5 | core dump deshabilitado en systemd (si aplica) | `systemctl show open-banca-api \| grep LimitCORE` | `LimitCORE=0` | ADR-0008-amendment §3 |
+| M-6 | RLIMIT_MEMLOCK suficiente para mlock | `ulimit -l` o `cat /proc/<pid>/limits \| grep 'Max locked'` | `unlimited` o valor > 64 MiB | ADR-0008-amendment §consecuencias |
+| M-7 | OPEN_BANCA_ENV no es "development" en producción | `grep OPEN_BANCA_ENV .env` | Ausente o `production` | ADR-0008-amendment §4 |
+
+### Comandos de configuración
+
+```bash
+# M-1 + M-2: Desactivar swap en caliente
+swapoff -a
+
+# M-3: Establecer swappiness = 0 persistente
+echo 'vm.swappiness=0' >> /etc/sysctl.d/99-open-banca.conf
+sysctl --system
+
+# M-6: RLIMIT_MEMLOCK (systemd service)
+# Añadir en /etc/systemd/system/open-banca-api.service:
+#   LimitMEMLOCK=infinity
+# O para sesión de shell de test:
+ulimit -l unlimited
+
+# M-4: Verificar docker-compose.yml incluye:
+#   services.api.ulimits.core.soft: 0
+#   services.api.ulimits.core.hard: 0
+#   services.temporal-worker.ulimits.core.soft: 0
+#   services.temporal-worker.ulimits.core.hard: 0
+```
+
+### Swap permanente deshabilitado
+
+```bash
+# Editar /etc/fstab: comentar o eliminar la línea con tipo 'swap'
+# Antes:   /dev/sda2  none  swap  sw  0 0
+# Después: # /dev/sda2  none  swap  sw  0 0
+
+# En instancias cloud con swap file:
+swapoff /swapfile
+rm /swapfile
+# Eliminar también la entrada en /etc/fstab
+```
+
+El API validará automáticamente M-1, M-2 y M-3 al arrancar y terminará con exit code 1 si alguno falla. El checklist completo (M-4 a M-7) es responsabilidad del operador antes de levantar los containers.
+
+Referencias de amenaza: CWE-244 (heap memory not cleared), CWE-528 (core dump exposure). Detalle técnico en [`../04-security/secrets-at-rest.md`](../04-security/secrets-at-rest.md) §Memory protection — hard requirements y [`../adr/0008-amendment-mlock.md`](../adr/0008-amendment-mlock.md).
+
 ## Primer arranque
 
 Secuencia esperada:
