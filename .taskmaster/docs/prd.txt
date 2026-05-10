@@ -62,15 +62,15 @@ Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcode
 - **Baseline**: 0% (no existe).
 - **Target**: ≥ 95% sobre 100 corridas reales en 30 días.
 - **Timeframe**: 60 días post-lanzamiento de v1.
-- **Measurement**: contador en SQLite + dashboard Langfuse.
+- **Measurement**: contador en SQLite (P0, instrumentación mínima obligatoria). Langfuse dashboard P1 opcional (Goal P0 no puede depender de componente P1).
 
-### Goal 2: Self-healing efectivo
+### Goal 2: Self-healing efectivo (HITL-supported en v1)
 
-- **Métrica**: % de rupturas detectadas que el sistema repara sin intervención humana (auto-remap exitoso).
+- **Métrica (v1, post ADR-0013-amendment)**: % de breakages detectados que se resuelven con UN solo HITL approval (no escalan a multi-touch / multiple proposals rechazados).
 - **Baseline**: 0% (no existe).
-- **Target**: ≥ 70% (resto requiere HITL via webhook `job.remap_proposed`).
+- **Target v1**: ≥ 70% de breakages → 1-shot HITL approval → re-corrida exitosa. Auto-remap measurement **deferred a v1.x** post-baseline empírico (mín. 100 decisiones humanas para calibrar Judge confidence/risk).
 - **Timeframe**: 90 días.
-- **Measurement**: log de Judge + outcome de Remapper en Langfuse.
+- **Measurement**: log de Judge (telemetría) + outcome de HITL approval + success de re-corrida en SQLite + Langfuse (opcional).
 
 ### Goal 3: Costo por scrape acotado
 
@@ -106,8 +106,9 @@ Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcode
 **Acceptance Criteria:**
 - [ ] `POST /scrape {bank: "banco_general", credential_ref: "...", full: true}` devuelve `job_id` en < 1s.
 - [ ] Webhook `job.created` se dispara inmediatamente.
-- [ ] Si no existe `map.json` para Banco General, Mapper agent corre automáticamente.
+- [ ] Si no existe `map.json` para Banco General, Mapper agent corre automáticamente. Observables: webhook `job.mapping_started` emitido al disparar Mapper, hard cap 5 min de duración, si falla emite `job.failed reason: mapping_failed` con detalle del último step intentado.
 - [ ] Webhook `job.otp_required` dispara cuando llega a Clave Móvil.
+- [ ] Estado `awaiting_otp` tiene TTL hard de 4 min. Al timeout: workflow emite `job.failed reason: otp_timeout` y cierra sesión browser. State machine: `awaiting_otp` → (`otp_confirmed` signal) → `otp_confirmed` | (timer expira) → `otp_timeout` → `failed`.
 - [ ] Cliente confirma OTP via `POST /jobs/{id}/otp-confirmed` dentro de 4 min.
 - [ ] Excel descargados por cada cuenta detectada (ahorro, corriente, TC).
 - [ ] Parser DSL convierte Excel → schema canónico unificado.
@@ -159,8 +160,8 @@ Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcode
 **Acceptance Criteria:**
 - [ ] Scraper runner emite `BreakageEvent` cuando: selector null, timeout, schema mismatch, HTTP error en step conocido.
 - [ ] Judge agent (DeepSeek) recibe el evento + screenshot + último step y emite decisión + `confidence` + `risk`.
-- [ ] Si `confidence ≥ 0.85 AND risk == low`, Remapper corre, parche se aplica, job se reintenta.
-- [ ] Si no, webhook `job.remap_proposed` se emite con diff del map.
+- [ ] **v1 (ADR-0013-amendment)**: SIEMPRE se emite webhook `job.remap_proposed` con diff del map + `confidence` + `risk` adjuntos como telemetría. NO auto-apply en v1.
+- [ ] Auto-apply path (`confidence ≥ 0.85 AND risk == low → aplicar sin HITL`) está implementado pero feature-flagged OFF en v1, on por config opt-in del operador. Default OFF.
 - [ ] Endpoint `POST /maps/{bank}/proposals/{id}/approve` aplica el patch.
 - [ ] TTL del proposal: 24h.
 - [ ] Cap: max 3 remap attempts por banco por 24h.
@@ -210,6 +211,31 @@ Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcode
 
 ---
 
+### Story 6: Operator handles wrong credentials / account lockout
+
+**Como** operador self-hosted,
+**Quiero** que cuando el login falle, el sistema clasifique el tipo de fallo y aplique la política correcta (circuit breaker inmediato para credenciales malas, retry para push rechazado, backoff para errores de red),
+**Para** no bloquear mi cuenta bancaria por reintentos automáticos sobre credenciales inválidas.
+
+**Acceptance Criteria:**
+- [ ] Cuando LoginActivity falla, clasificador determina `error_type`: `credential_error` | `push_rejected` | `network_error` | `unknown`.
+- [ ] `credential_error` (username/password rechazado por el banco): circuit breaker INMEDIATO 1h cooldown tras 1 fallo (NO esperar 2 fallos como caso genérico). Emite `job.failed reason: credential_error`. Bloquea futuros jobs sobre esa `credential_ref` durante 1h.
+- [ ] `push_rejected` (usuario rechaza Clave Móvil push activamente): retry once con nueva push. Si segunda push también rechazada → `job.failed reason: push_rejected_twice`. No circuit breaker.
+- [ ] `network_error` (timeout TCP, DNS, 5xx del banco): retry con exponential backoff (3 intentos, base 2s). No cuenta hacia circuit breaker de credenciales.
+- [ ] `unknown`: comportamiento conservador — circuit breaker 1h (tratado como `credential_error`).
+- [ ] Webhook `job.failed` payload incluye `error_type` y `error_subtype` para que el operador pueda automatizar respuesta.
+- [ ] Clasificador es determinístico (basado en HTTP status, texto de error, presencia de selectores específicos) y testeable con HAR fixtures.
+- [ ] Override manual: operador puede resetear circuit breaker via CLI `open-banca circuit-breaker reset --bank banco_general --credential-ref <ref>` con confirmación interactiva.
+
+**Task Breakdown Hint:**
+- Login error classifier + tests con HAR fixtures (8h).
+- Circuit breaker con clasificación por tipo (6h).
+- CLI override + audit log (4h).
+
+**Dependencies**: Story 1, REQ-011 (cost guardrails / circuit breaker base).
+
+---
+
 ## Functional Requirements
 
 ### Must Have (P0)
@@ -245,7 +271,7 @@ Lee `map.json`, ejecuta steps secuencialmente, emite `BreakageEvent` al fallar. 
 
 Validator hace checks heurísticos + LLM cuando ambiguo. Judge analiza BreakageEvent + screenshot y decide ruta (retry / partial_remap / full_remap / abort / human_required) + confidence + risk.
 
-**AC**: confidence ≥ 0.85 AND risk == low → auto-apply remap. Sino → HITL.
+**AC (v1, post-review ADR-0013-amendment)**: **v1 es HITL-only**: siempre se emite webhook `job.remap_proposed` y se espera approval humano via endpoint. `confidence` y `risk` se computan y persisten **solo como telemetría** (para futura calibración). El path de auto-apply (confidence ≥ 0.85 AND risk == low) queda **deferred a v1.x** una vez que existan ≥ 100 decisiones humanas reales sobre las cuales calibrar los thresholds. Justificación: Judge text-only sobre OCR de screenshot tiene calibración admitida como "arbitraria"; activar auto-apply sin baseline empírica = blast radius alto. Ver ADR-0013-amendment.
 
 #### REQ-006: Remapper agent (browser-use + Claude vision)
 
@@ -257,7 +283,9 @@ Re-explora la zona afectada y emite patch al `map.json`. Auto-apply o emit webho
 
 Helpers whitelisted: `parse_date`, `extract_regex`, `normalize_amount`, `lookup_table`, `coalesce`, `trim`, `to_upper`, `to_lower`, `concat`. `parser.json` por banco define column mappings. account_type inference. id_strategy (embedded vs fingerprint). Detalle en `docs/02-components/parser.md`.
 
-**AC**: NO ejecuta Python arbitrario; ejecuta dentro del sandbox sin riesgo RCE.
+**Nota (post P0-4 review)**: `extract_regex` backed by `re2` (no ReDoS, linear time guarantees). Excel parsing wrapped with `defusedxml.lxml` + size/zip-ratio guards (max uncompressed size, max ratio compressed:uncompressed). `lookup_table` con cap explícito de memoria. Ver ADR-0007-amendment.
+
+**AC**: NO ejecuta Python arbitrario; ejecuta dentro del sandbox sin riesgo RCE; no vulnerable a ReDoS o XML zip-bomb (CWE-1333, CVE-2017-5992). Tests con payloads maliciosos en CI.
 
 #### REQ-008: Storage SQLite + sqlcipher
 
@@ -269,7 +297,9 @@ Tablas: credentials, jobs, accounts, transactions, dedup_index, audit_log, webho
 
 Container efímero por scrape. Network policy: allowlist (dominio banco + APIs LLM). Drop everything else. caps dropped, seccomp profile, AppArmor, read-only rootfs (excepto tmpfs y /downloads), no-new-privileges, user non-root, resource limits (cpu, mem, pids). Detalle en `docs/04-security/sandbox.md`.
 
-**AC**: container se destruye al terminar job. Filesystem no persiste cross-job.
+**Nota (post P0-1 review, ADR-0019)**: el sandbox aloja un proceso `BrowserSidecar` que mantiene la sesión CDP viva cross-restart del worker Temporal durante OTP wait. IPC entre worker y sidecar: Unix Domain Socket `/run/banca/sidecar.sock` (dentro del container). Token `browser_session_token = {container_id, socket_path, sidecar_pid}` persistido en Temporal activity heartbeat. Lifecycle del sidecar PID: nace con el container, muere con job.completed/failed/cancelled. TTL configurable via `BANCA_OTP_SIDECAR_TTL_S` (default 300s).
+
+**AC**: container se destruye al terminar job. Filesystem no persiste cross-job. Sidecar PID monitoreado por health check; si muere durante OTP wait, workflow emite `job.failed reason: sidecar_died`.
 
 #### REQ-010: Webhooks HMAC-SHA256
 
@@ -292,6 +322,27 @@ Container efímero por scrape. Network policy: allowlist (dominio banco + APIs L
 `banks/banco_general/map.json` + `parser.json` + fixtures HAR + tests. Auth con Clave Móvil. Cuentas: savings, checking, credit_card. Detalle + open questions en `docs/06-banks/banco-general.md`.
 
 **AC**: 95% success rate sobre 100 scrapes reales.
+
+#### REQ-018: docker-socket-proxy hardening (PROMOVIDO A P0)
+
+Golden config + smoke test endpoints prohibidos. **Issue #2.** **Justificación promoción**: Phase 3 piloto correrá con socket exposure si esto queda en P2; cualquier CVE de Chromium = host compromise. Inconsistente con REQ-009 (sandbox) que ya está P0.
+
+**AC**: Worker no tiene acceso directo al socket Docker. Proxy expone solo endpoints whitelisted (CONTAINERS=1, NETWORKS=1, BUILD=0, EXEC=0). Smoke suite valida allow/deny por endpoint.
+
+#### REQ-021: PII filter middleware on LLM boundary (NUEVO P0)
+
+Filter middleware de dos capas que redacta PII del usuario antes de mandar payloads al LLM provider, para cumplir Ley 81 PA Art. 13 (transferencia transfronteriza de datos personales requiere consentimiento explícito). **Justificación**: browser-use `sensitive_data` solo redacta credenciales declaradas. Post-login el banco renderiza nombre titular, número de cuenta, balance, dirección, etc. — todo eso llega al provider (Anthropic US o DeepSeek CN) sin esta capa. Ver ADR-0020.
+
+- **Capa 1 (text/DOM)**: regex-based redact aplicado a todos los inputs textuales de los 4 agentes (Mapper, Validator, Judge, Remapper). Reemplaza patrones: nombres titulares, números de cuenta (16 dígitos / IBAN), balances numéricos con $ o B/., teléfonos, emails, cédulas PA, direcciones. Implementación: `adapters/llm/pii_filter.py`.
+- **Capa 2 (screenshot region fill)**: para Mapper y Remapper (vision), regiones del screenshot que contengan PII se rellenan con color sólido antes del envío. Detección heurística por bounding boxes de OCR. Implementación: `adapters/llm/screenshot_redact.py`.
+
+**AC**: Canary CI tests con `PII_CANARY_NAME`, `PII_CANARY_ACCT`, `PII_CANARY_BAL` inyectados; grep en payloads del model input devuelve 0 hits para los 3. Tests corren en CI bloqueando merge. Operator-overridable via config (opt-in para enviar PII si el operador acepta riesgo legal).
+
+#### REQ-019: browser-use sensitive_data fuzz test (PROMOVIDO A P0)
+
+Validar empíricamente que LLM nunca recibe plaintext. **Issue #3.** **Justificación promoción**: Goal 5 (seguridad de credenciales, zero-tolerance) depende directamente de este test; sin él, no hay garantía empírica del invariante.
+
+**AC**: Test instrumenta LiteLLM, ejecuta Mapper/Remapper sobre fixture con `SECRET_CANARY_VALUE` como password, grep recursivo en payloads del model input devuelve 0 hits. Corre en CI bloqueando merge.
 
 ### Should Have (P1)
 
@@ -317,13 +368,7 @@ Linter 12 reglas, cosign signing keyless GitHub OIDC para maps oficiales. Pipeli
 
 ### Could Have (P2)
 
-#### REQ-018: docker-socket-proxy hardening
-
-Golden config + smoke test endpoints prohibidos. **Issue #2.**
-
-#### REQ-019: browser-use sensitive_data fuzz test
-
-Validar empíricamente que LLM nunca recibe plaintext. **Issue #3.**
+> Nota: REQ-018 y REQ-019 fueron promovidos a P0 (ver sección Must Have). Esta sección queda con REQ-020 únicamente.
 
 #### REQ-020: Webhook clock skew /time endpoint
 
@@ -336,7 +381,10 @@ Diagnosis para clientes con NTP roto. **Issue #5.**
 ### Performance
 
 - API `POST /scrape`: response < 1s (devuelve job_id, work async).
-- Scrape job end-to-end (banco con 3 cuentas, range 30 días): p50 < 90s, p95 < 180s, p99 < 300s.
+- Scrape job end-to-end (banco con 3 cuentas, range 30 días):
+  - **`interactive_p99` (excluye tiempo de OTP wait)**: p50 < 90s, p95 < 180s, p99 < 300s. SLO primario.
+  - **`wallclock_p99` (incluye OTP wait)**: hard cap 15 min (240s OTP + 60s buffer + scrape budget). SLO secundario, reportado separadamente.
+  - **Nota**: p50/p95/p99 reportados como `interactive_*` excluyen explícitamente el tiempo de espera del usuario para confirmar OTP. La métrica `wallclock_*` incluye ese tiempo y tiene cap distinto. Sin esta separación, `p99 < 300s` sería incoherente con OTP cap 240s.
 - OTP wait hard cap: 4 min (banco expira sesión a 5).
 - Mapper run (one-time): max 5 min, max $0.50 cost.
 
@@ -344,10 +392,12 @@ Diagnosis para clientes con NTP roto. **Issue #5.**
 
 - Credenciales bancarias cifradas at-rest con Argon2id + AES-GCM (sqlcipher).
 - Master passphrase nunca persiste; solo en memoria.
+- **Master passphrase y derived keys protegidos con `mlock(2)`** (no swappeable). Swap deshabilitado en host. Core dumps suppressed (`ulimit -c 0`). Boot-time check enforced (boot falla si swap activo o RLIMIT_CORE != 0). Ver ADR-0008-amendment + `docs/05-operations/deployment.md` M-1..M-7 checklist.
 - LLMs nunca reciben plaintext de credenciales (sensitive_data injection en browser-use).
+- LLMs nunca reciben PII del usuario en screenshots/DOM (PII redact middleware, ADR-0020, Ley 81 PA Art. 13).
 - Network policy estricta por banco en sandbox (allowlist).
 - Webhooks firmados HMAC-SHA256 + anti-replay timestamp.
-- Threat model STRIDE completo (17 amenazas categorizadas) en `docs/04-security/threat-model.md`.
+- Threat model STRIDE completo (17 amenazas categorizadas + 9 nuevas post-review = 26) en `docs/04-security/threat-model.md`.
 
 ### Reliability
 
@@ -367,7 +417,7 @@ Diagnosis para clientes con NTP roto. **Issue #5.**
 
 - License AGPL-3.0 — derivative services deben permanecer abiertos.
 - No tracking del usuario (sin telemetry phone-home).
-- Operador self-hosted es responsable del cumplimiento legal local (Ley 81 PA de protección de datos, etc.).
+- **Ley 81 PA (protección de datos personales) Art. 13**: la transferencia transfronteriza de datos personales del usuario al LLM provider (Anthropic US, DeepSeek CN) requiere consentimiento explícito y mitigación técnica. open-banca implementa el control técnico via REQ-021 (PII filter middleware, ADR-0020). La capa text + screenshot redact garantiza que PII no abandona el sandbox sin sanitización. **Operador self-hosted** es responsable de: (a) configurar el PII filter correctamente para su jurisdicción, (b) obtener consentimiento del usuario final si aplica, (c) cumplir con auditorías locales (Ley 81 PA, GDPR si UE, otros marcos).
 
 ---
 
@@ -403,9 +453,19 @@ Diagnosis para clientes con NTP roto. **Issue #5.**
 
 Hexagonal/Clean. 11 ports nombrados (BankMapPort, BrowserDriverPort, LLMPort, JobStorePort, SecretStorePort, EventBusPort, ExcelParserPort, SandboxPort, ObservabilityPort, ClockPort, WorkflowEnginePort). Adaptadores: api, orchestrator, browser, llm, storage, parsing, sandbox. Detalle en `docs/01-architecture/hexagonal.md`.
 
+### Environment variables clave
+
+| Env var | Default | Descripción |
+|---------|---------|-------------|
+| `OPEN_BANCA_MASTER_PASSPHRASE` | (none, prompt al boot) | Passphrase maestro para sqlcipher KDF. mlocked en memoria. |
+| `BANCA_OTP_SIDECAR_TTL_S` | `300` | TTL en segundos del proceso BrowserSidecar (ADR-0019). Cubre OTP wait 240s + buffer. |
+| `OPEN_BANCA_LIVE_SMOKE` | `0` | Si `1`, habilita smoke test contra banco real (requiere creds operador). |
+| `TEMPORAL_HOST` | `localhost:7233` | Endpoint Temporal server. |
+| `TASK_QUEUE` | `open-banca-default` | Task queue del worker. |
+
 ### Decisiones registradas
 
-15 ADRs en `docs/adr/`. Source of truth para todos los trade-offs.
+15 ADRs originales + 5 nuevos post P0 review (0007-amendment, 0008-amendment, 0013-amendment, 0019, 0020) en `docs/adr/`. Source of truth para todos los trade-offs.
 
 ---
 
@@ -554,13 +614,13 @@ Otros riesgos:
 
 ### Phase distribution
 
-- Phase 1: 8 tasks
-- Phase 2: 6 tasks
-- Phase 3: 9 tasks
+- Phase 1: 8 tasks (incl. T24 docker-socket-proxy promovido, T33 docker-compose stack, T34 CLI)
+- Phase 2: 6 tasks (incl. T31 wire endpoints)
+- Phase 3: 9 tasks (incl. T32 incremental cursor)
 - Phase 4: 7 tasks
 - Phase 5: 8 tasks
-- Phase 6: 5 tasks
-- USER-TEST checkpoints: 6 (al final de cada phase).
+- Phase 6: 5 tasks (incl. T35 USER-TEST checkpoint 6)
+- USER-TEST checkpoints: 6 (tasks 8, 13, 18, 22, 29, 35 — al final de cada phase).
 
 ### Source of truth para taskmaster
 
