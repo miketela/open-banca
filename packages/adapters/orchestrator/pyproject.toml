@@ -4,6 +4,17 @@ version = "0.1.0"
 description = "Orchestrator adapter: Temporal workflows and activities"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "temporalio>=1.7",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+]
 
 [build-system]
 requires = ["hatchling"]
