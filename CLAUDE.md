@@ -84,7 +84,7 @@ shared/schemas/      (Pydantic cross-package)
 
 ```bash
 # Setup
-uv sync --all-extras
+uv sync --all-packages
 docker compose -f docker-compose.dev.yml up -d  # Temporal + (opcional) Langfuse
 uv run playwright install chromium
 
