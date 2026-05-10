@@ -1,0 +1,105 @@
+# docker-compose.dev.yml — open-banca local development stack
+#
+# Levanta Temporal server, UI, y su base de datos PostgreSQL.
+# NO levanta la API ni el worker (corren con uv en el host durante desarrollo).
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down
+#   docker compose -f docker-compose.dev.yml logs -f temporal
+#
+# Puertos expuestos al host:
+#   7233  — Temporal gRPC (workers + SDK)
+#   8080  — Temporal Web UI
+#
+# Seguridad (dev):
+#   - postgres-temporal NO está expuesto al host (solo red interna)
+#   - ulimits.core = 0 en todos los servicios (ADR-0008 / M-4)
+#   - No se usa "latest" tag — versiones pinadas para reproducibilidad
+
+services:
+
+  postgres-temporal:
+    image: postgres:16-alpine
+    container_name: open-banca-postgres-temporal
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal_dev_password
+      POSTGRES_DB: temporal
+    volumes:
+      - postgres-temporal-data:/var/lib/postgresql/data
+    networks:
+      - open-banca-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  temporal-server:
+    image: temporalio/auto-setup:1.27.2
+    container_name: open-banca-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres-temporal:
+        condition: service_healthy
+    ports:
+      - "7233:7233"
+    environment:
+      # PostgreSQL backend
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres-temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal_dev_password
+      # Temporal server tuning (dev)
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      TEMPORAL_BROADCAST_ADDRESS: "127.0.0.1"
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      LOG_LEVEL: warn
+    networks:
+      - open-banca-dev
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal-server:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+  temporal-ui:
+    image: temporalio/ui:2.35.0
+    container_name: open-banca-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      temporal-server:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal-server:7233
+      TEMPORAL_CORS_ORIGINS: "http://localhost:8080"
+      TEMPORAL_UI_PORT: "8080"
+    networks:
+      - open-banca-dev
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+
+networks:
+  open-banca-dev:
+    driver: bridge
+
+volumes:
+  postgres-temporal-data:
+    name: open-banca-postgres-temporal-data

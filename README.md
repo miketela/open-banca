@@ -19,6 +19,71 @@ Banco General (Panamá).
 3. [`docs/01-architecture/multi-agent.md`](./docs/01-architecture/multi-agent.md) — orquestación de agentes.
 4. [`docs/adr/`](./docs/adr/) — decisiones arquitectónicas registradas.
 
+## Desarrollo local
+
+### Requisitos
+
+- Docker + Docker Compose v2
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) como package manager
+
+### Setup inicial
+
+```bash
+uv sync --all-extras
+```
+
+### Levantar stack de desarrollo (Temporal)
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Servicios expuestos:
+
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| Temporal gRPC | `7233` | SDK de Python + workers |
+| Temporal Web UI | `8080` | `http://localhost:8080` |
+
+Para bajar el stack:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Para ver logs:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f temporal-server
+```
+
+### Correr el worker (en el host)
+
+```bash
+# Con defaults (apunta a localhost:7233)
+uv run python -m open_banca_orchestrator.worker
+
+# Con variables de entorno
+OPEN_BANCA_TEMPORAL_ADDRESS=localhost:7233 \
+OPEN_BANCA_TEMPORAL_TASK_QUEUE=open-banca-task-queue \
+uv run python -m open_banca_orchestrator.worker
+```
+
+### Tests
+
+```bash
+# Suite completa (no requiere Docker — usa time-skipping env de Temporal)
+uv run pytest packages/adapters/orchestrator -v
+
+# Solo unit tests
+uv run pytest -m "not live"
+
+# Lint + tipos
+uv run ruff check packages/adapters/orchestrator
+uv run pyrefly check packages/adapters/orchestrator
+```
+
 ## Licencia
 
 AGPL-3.0 — cualquier servicio derivado debe permanecer abierto. Es deliberado.
