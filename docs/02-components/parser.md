@@ -20,7 +20,7 @@ Set cerrado v1. Cualquier nuevo helper requiere PR al core con tests + doc.
 | Helper | Argumentos | Uso |
 |--------|------------|-----|
 | `parse_date(format)` | `format` (strptime-like, ej. `%d/%m/%Y`) | Parsea celda string a ISO-8601. |
-| `extract_regex(pattern, group)` | `pattern`, `group` (int) | Extrae substring de la celda. Pattern compilado en validation, sin backtracking peligroso (re2 si disponible). |
+| `extract_regex(pattern, group)` | `pattern`, `group` (int) | Extrae substring de la celda. Backend **re2** (google/re2 Python binding) — complejidad O(n) garantizada, inmune a ReDoS (CWE-1333). Pattern validado re2-compat en linter (regla L13) antes de deployment. |
 | `normalize_amount(locale)` | `locale` (`pa_PA`, `en_US`, etc.) | Convierte string monetario a decimal (`-1,234.56` → `-1234.56`). |
 | `lookup_table(map)` | `map` (dict literal en JSON) | Reemplaza valores conocidos (ej. `"DEB"` → `"debit"`). |
 | `coalesce(...refs)` | Lista de col refs | Devuelve primera no-vacía. Útil cuando débito y crédito están en columnas separadas. |
@@ -88,7 +88,7 @@ La dedup en API usa el id resultante como nivel 1 (ver [`storage.md`](./storage.
 flowchart TD
     Start([Excel + parser.json]) --> Validate[Valida parser.json\ncontra JSON Schema]
     Validate -->|fail| Err1[error: invalid_parser]
-    Validate -->|ok| Open[Abre Excel con openpyxl]
+    Validate -->|ok| Open[Abre Excel con openpyxl + defusedxml\nVerifica tamaño andlt;=50 MB + zip ratio andlt;=100x]
     Open --> Iter[Por cada sheet en parser.sheets]
     Iter --> Match{name_pattern\nmatchea?}
     Match -->|no| Skip[Skip sheet]
@@ -154,9 +154,61 @@ Antes de devolver:
 - No deduplica (eso pasa en API, ver [`storage.md`](./storage.md)).
 - No infiere parsers — eso es flujo separado (manual hoy, agentic v2).
 
+## Hardening / DSL Safety
+
+Definido formalmente en [ADR-0007 Amendment](../adr/0007-amendment-dsl-hardening.md). Esta sección documenta los controles activos en el engine.
+
+### extract_regex — backend re2
+
+`extract_regex` utiliza el binding Python de **google/re2** (`re2` / `pyre2`), no la stdlib `re`. re2 implementa autómatas finitos sin backtracking, garantizando complejidad **O(n)** en el largo del input para cualquier pattern. Esto elimina ReDoS (CWE-1333) por construcción.
+
+El linter de CI valida cada pattern con **regla L13**: el pattern debe compilar en re2 sin error antes de que el map sea aceptado. Features no soportadas por re2 (lookahead sin límite, backreferences) son rechazadas en linter — no llegan al engine. Ver REQ-017.
+
+### Presupuestos de recursos por helper
+
+Cada helper tiene caps irrechazables aplicados en runtime. Si alguno se excede, el activity aborta con `resource_budget_exceeded`.
+
+| Helper | Cap de CPU por celda | Cap de memoria / tamaño | Cap de iteraciones |
+|--------|---------------------|------------------------|--------------------|
+| `extract_regex` | 100 ms | — | — |
+| `parse_date` | 100 ms | — | — |
+| `lookup_table` | — | Máx. 100 000 filas; lookup hash O(1) | — |
+| `concat` | — | Output máx. 64 KB por celda | Máx. 50 refs por invocación |
+| Sheet completo | — | Máx. 10 MB datos descomprimidos por sheet | Máx. 10 000 filas por sheet |
+
+### Ingesta Excel — defusedxml + validaciones de tamaño
+
+Antes de abrir cualquier `.xlsx` el engine realiza tres checks obligatorios:
+
+1. **Tamaño en disco**: rechaza archivos > **50 MB** (error `excel_too_large`). Evita zip bombs y archivos malformados.
+2. **Ratio de compresión ZIP**: rechaza si `tamaño_descomprimido / tamaño_comprimido > 100x` medido via streaming del header ZIP sin descomprimir completamente (error `excel_zip_bomb_heuristic`). Heurístico para CVE-2017-5992 / defusedxml advisories.
+3. **Entidades XML externas**: openpyxl se configura con **defusedxml** activo, que deshabilita la resolución de entidades externas y previene billion-laughs / SSRF por XML unsafe loading.
+
+Estas validaciones se ejecutan antes de que openpyxl lea cualquier celda. No son configurables por el map ni por el operador (sin override).
+
+### Reglas del linter (REQ-017) — 14 reglas totales
+
+El linter de community maps (L01–L14) incluye dos reglas de hardening DSL:
+
+| ID | Regla |
+|----|-------|
+| L13 | Cada `extract_regex` pattern debe ser compilable por re2. Patterns con lookahead/lookbehind sin límite de longitud son rechazados. |
+| L14 | Tamaño total de todos los `lookup_table` maps en un `parser.json` ≤ 1 MB serializado. |
+
+Ver tabla completa en [`../04-security/community-maps.md`](../04-security/community-maps.md).
+
+### CVEs y CWEs de referencia
+
+| Referencia | Descripción | Control aplicado |
+|------------|-------------|-----------------|
+| CWE-1333 | Inefficient Regular Expression Complexity (ReDoS) | Backend re2 + linter L13 |
+| CVE-2017-5992 / defusedxml advisories | XML unsafe loading en parsers basados en openpyxl/lxml | defusedxml + zip ratio cap |
+| CWE-400 | Uncontrolled Resource Consumption | Hard caps por helper + Excel size limits |
+
 ## Referencias
 
 - ADR-0007 DSL declarativo: [`../adr/0007-declarative-excel-dsl.md`](../adr/0007-declarative-excel-dsl.md).
+- ADR-0007 Amendment (hardening): [`../adr/0007-amendment-dsl-hardening.md`](../adr/0007-amendment-dsl-hardening.md).
 - Schema canónico: [`../adr/0012-unified-account-schema.md`](../adr/0012-unified-account-schema.md).
 - Storage y dedup: [`storage.md`](./storage.md).
 - Banco General specs: [`../06-banks/banco-general.md`](../06-banks/banco-general.md).

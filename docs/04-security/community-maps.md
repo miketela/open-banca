@@ -33,10 +33,12 @@ El linter corre en CI sobre todo PR que toque `banks/*/map.json`, `banks/*/parse
 | L06 | Sin `http://` salvo localhost en fixtures de tests | TLS obligatorio |
 | L07 | Tamaño máximo del map ≤ 64 KB | Evitar map gigante con payload escondido |
 | L08 | Sin atributos `redirect` o `follow_external` | Prevenir desvío del flujo a host malicioso |
-| L09 | `parser.json` sólo helpers DSL whitelisted; sin regex catastrofica (ReDoS scan) | Estabilidad del runner |
+| L09 | `parser.json` sólo helpers DSL whitelisted; todo `extract_regex` pattern debe ser **re2-compatible** (linter compila con google/re2; patterns con backtracking ilimitado son rechazados — CWE-1333) | Estabilidad del runner; inmunidad a ReDoS |
 | L10 | Campos de input declarados deben mapear a placeholders conocidos (`<<username>>`, `<<password>>`, `<<otp>>`) | Sin nombres custom para tipear cred en lugares raros |
 | L11 | Hosts secundarios (CDN, fonts) deben estar en `bank.yaml` allowlist | Allowlist explícito por banco |
 | L12 | No `eval` en parser DSL ni en map | Redundante con L02/L03, defensa por capas |
+| L13 | Cada `extract_regex` pattern debe compilar con re2 sin error. Rechaza lookahead/lookbehind sin límite de longitud. | Garantía constructiva O(n); elimina ReDoS (CWE-1333) |
+| L14 | Tamaño total de todos los `lookup_table` maps en un `parser.json` ≤ 1 MB serializado | Complementa el cap runtime de 100 K filas; CWE-400 |
 
 ## Pipeline CI de validación
 
@@ -46,9 +48,10 @@ flowchart TD
     ci --> schema[L01 schema check]
     schema --> dsl[L02-L04 DSL whitelist + token deny]
     dsl --> urls[L05-L08 URL + size + redirect rules]
-    urls --> parser[L09-L10 parser DSL + placeholders]
+    urls --> parser[L09-L10 parser DSL + placeholders\nL09: re2-compat regex check]
     parser --> hosts[L11-L12 host allowlist coherence]
-    hosts --> smoke[Smoke test contra fixture HAR<br/>opcional para community]
+    hosts --> dslharden[L13-L14 re2 compile + lookup_table size]
+    dslharden --> smoke[Smoke test contra fixture HAR<br/>opcional para community]
     smoke -- ok --> approve[Mark PR como passing]
     smoke -- fail --> reject[Block merge]
     schema -- fail --> reject
@@ -56,6 +59,7 @@ flowchart TD
     urls -- fail --> reject
     parser -- fail --> reject
     hosts -- fail --> reject
+    dslharden -- fail --> reject
     approve --> merge[Merge a community/]
     merge --> publish[Publica en release sin firmar]
 ```
