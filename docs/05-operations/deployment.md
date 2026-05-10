@@ -53,7 +53,8 @@ Solo `api` se expone al host (puerto único, ej. `8080`). Reverse proxy / TLS te
 |----------|----------------------|-------------------|-----------|------------|----------------------------------|
 | `api` | `python:3.12-slim` (build local con uv) | `8080` (al host) | `sqlite-data:/data`, `maps-fs:/maps:ro`, `job-artifacts:/artifacts:ro` | `temporal`, `temporal-worker` | `OPEN_BANCA_MASTER_PASSPHRASE`, `WEBHOOK_HMAC_SECRET`, `API_KEY`, `TEMPORAL_ADDRESS`, `LANGFUSE_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `temporal` | `temporalio/auto-setup` | interno | — | `postgres-temporal` | `DB_HOST`, `DB_USER`, `DB_PORT`, `POSTGRES_PWD` |
-| `temporal-worker` | mismo build que `api` | interno | `maps-fs:/maps:ro`, `job-artifacts:/artifacts`, `/var/run/docker.sock` | `temporal` | `TEMPORAL_ADDRESS`, `TASK_QUEUE`, `WORKER_CONCURRENCY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `LITELLM_*` |
+| `docker-socket-proxy` | `tecnativa/docker-socket-proxy:latest` | interno (solo `open-banca-internal`) | `/var/run/docker.sock:ro` | — | `CONTAINERS=1`, `IMAGES=1`, `NETWORKS=1`, `POST=1`, `EXEC=0`, `BUILD=0`, `VOLUMES=0` (ver golden config) |
+| `temporal-worker` | mismo build que `api` | interno | `maps-fs:/maps:ro`, `job-artifacts:/artifacts` (sin docker.sock directo) | `temporal`, `docker-socket-proxy` | `TEMPORAL_ADDRESS`, `TASK_QUEUE`, `WORKER_CONCURRENCY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `DOCKER_HOST=tcp://docker-socket-proxy:2375` |
 | `postgres-temporal` | `postgres:16-alpine` | interno | `pg-temporal:/var/lib/postgresql/data` | — | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
 | `sandbox-runner` (ephemeral) | `mcr.microsoft.com/playwright/python` (custom layer) | ninguno | `job-artifacts:/artifacts` (sólo subdir del job) | spawned por worker | `JOB_ID`, `BANK_ID`, `MAP_PATH`, `LLM_API_KEYS_FORWARDED` |
 | `langfuse` (opcional) | `langfuse/langfuse:latest` | interno (opcional al host) | `langfuse-data:/data` | `postgres-langfuse` | `DATABASE_URL`, `NEXTAUTH_SECRET`, `SALT` |
@@ -61,7 +62,7 @@ Solo `api` se expone al host (puerto único, ej. `8080`). Reverse proxy / TLS te
 
 Notas:
 
-- `temporal-worker` monta `/var/run/docker.sock` para spawnar `sandbox-runner` como **sibling container** (no Docker-in-Docker). Trade-off de seguridad: el worker puede pedir cualquier acción al daemon — mitigado porque el worker ya está en red interna y no recibe input externo. Alternativa rootless docker / podman queda como opción para v2.
+- `temporal-worker` usa `docker-socket-proxy` (REQ-018) en lugar de montar `/var/run/docker.sock` directamente. El worker declara `DOCKER_HOST=tcp://docker-socket-proxy:2375`. El proxy expone sólo los endpoints necesarios para spawn/manage del sandbox container (CONTAINERS, IMAGES, NETWORKS, POST). Todo lo demás retorna 403. Detalles en [`../04-security/sandbox.md §docker-socket-proxy`](../04-security/sandbox.md).
 - `sandbox-runner` se spawnea **por job**, en su propia ephemeral network con drop-all + allow del dominio del banco + APIs LLM whitelisted (ver [`../04-security/threat-model.md`](../04-security/threat-model.md)).
 - `langfuse` y su Postgres son opt-in vía profile docker-compose (`--profile langfuse`).
 
@@ -159,6 +160,71 @@ Health endpoints:
 
 - `GET /healthz` — liveness simple.
 - `GET /readyz` — checa conexión a Temporal + DB desbloqueada + worker registrado.
+
+## Verificación post-deploy: docker-socket-proxy (REQ-018, obligatorio)
+
+Después de `docker compose up -d`, verificar que el `docker-socket-proxy` bloquea
+correctamente los endpoints prohibidos y permite los necesarios.
+
+**Paso P1 — Verificar que el proxy responde:**
+
+```bash
+curl -sf http://localhost:2375/version && echo "proxy UP" || echo "proxy DOWN — revisar logs"
+# Si el proxy no está expuesto al host (correcto en prod), ejecutar desde dentro de la red:
+docker compose exec temporal-worker curl -sf http://docker-socket-proxy:2375/version
+```
+
+**Paso P2 — Verificar endpoints bloqueados (deben retornar 403):**
+
+```bash
+# Desde el worker (que tiene acceso a la red interna)
+docker compose exec temporal-worker sh -c '
+  for endpoint in \
+    "POST /v1.43/containers/fake_id/exec" \
+    "POST /v1.43/build" \
+    "GET /v1.43/secrets" \
+    "POST /v1.43/services/create" \
+    "POST /v1.43/volumes/create"; do
+    method=$(echo $endpoint | cut -d" " -f1)
+    path=$(echo $endpoint | cut -d" " -f2)
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X $method http://docker-socket-proxy:2375$path)
+    if [ "$code" = "403" ]; then
+      echo "OK  $method $path -> 403 (blocked)"
+    else
+      echo "FAIL $method $path -> $code (esperado 403) -- REVISAR CONFIGURACION PROXY"
+    fi
+  done
+'
+```
+
+**Paso P3 — Verificar que el worker usa el proxy (no el socket directo):**
+
+```bash
+# El worker NO debe tener /var/run/docker.sock montado
+docker inspect open-banca-temporal-worker \
+  --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' \
+  | grep -v "docker.sock" && echo "OK: no direct socket mount" \
+  || echo "FAIL: worker tiene socket directo montado"
+
+# El worker debe tener DOCKER_HOST apuntando al proxy
+docker inspect open-banca-temporal-worker \
+  --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | grep DOCKER_HOST
+# Esperado: DOCKER_HOST=tcp://docker-socket-proxy:2375
+```
+
+**Paso P4 — Smoke tests de integración completos (opcional, requiere daemon accesible):**
+
+```bash
+# Ejecutar desde el host con el stack corriendo
+OPEN_BANCA_DOCKER_INTEGRATION=1 \
+DOCKER_PROXY_HOST=localhost \
+DOCKER_PROXY_PORT=2375 \
+  uv run pytest packages/adapters/sandbox/tests/test_socket_proxy.py -v
+```
+
+Si algún paso P1-P3 falla, detener el stack (`docker compose down`) y revisar
+`docs/04-security/sandbox.md §docker-socket-proxy golden config` antes de continuar.
 
 ## Escalado
 

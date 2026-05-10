@@ -649,6 +649,12 @@ requires-dist = [
 name = "open-banca-sandbox"
 version = "0.1.0"
 source = { editable = "packages/adapters/sandbox" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27.0" }]
 
 [[package]]
 name = "open-banca-schemas"
