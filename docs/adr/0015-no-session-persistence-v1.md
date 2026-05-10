@@ -12,13 +12,13 @@ En el contexto de bancos panameños, esto choca con realidades operativas:
 4. **OTP requerido por sesión nueva**: incluso si conserváramos la cookie, muchas operaciones (descargar reporte, ver movimientos extendidos) requieren re-validar OTP cuando el banco detecta un patrón inusual. La "ganancia" es marginal.
 5. **Complejidad operativa**: serializar y deserializar el state del browser entre containers efímeros es no-trivial.
 
-Por contraste, **dentro del mismo job** sí necesitamos preservar el browser context durante la ventana de OTP (el cliente puede tardar hasta 4 minutos en aprobar el push en su app). Esa preservación es una activity de Temporal que mantiene heartbeat para no soltar el slot.
+Por contraste, **dentro del mismo job** sí necesitamos preservar el browser context durante la ventana de OTP (el cliente puede tardar hasta 4 minutos en aprobar el push en su app). Esa preservación la realiza el proceso `BrowserSidecar` dentro del sandbox container, que mantiene la conexión CDP con Chromium independientemente del ciclo de vida del worker Temporal. La activity `OTPSignalAwaitActivity` mantiene el **slot de signal de Temporal** mediante heartbeat, pero no la conexión al browser. Ver [ADR-0019](./0019-browser-sidecar-otp.md).
 
 ## Decision
 
 **v1 no persiste cookies, localStorage, sessionStorage, IndexedDB ni ningún state del browser entre scrape jobs.** Cada job arranca con un browser context nuevo en su Docker container efímero, hace login completo, opera, y al terminar el container se destruye.
 
-**Sí persistimos el contexto del browser dentro del mismo job activo**, específicamente durante la ventana de espera del OTP. Esa preservación se hace en la activity de Temporal que conserva el slot vivo via heartbeat ([ADR-0003](./0003-temporal-orchestration.md)). Si el OTP no llega en 4 minutos, abort + retry; jamás "reusar después".
+**Sí preservamos el browser context dentro del mismo job activo**, específicamente durante la ventana de espera del OTP. Esa preservación la realiza el proceso `BrowserSidecar` dentro del sandbox container ([ADR-0019](./0019-browser-sidecar-otp.md)), no la activity de Temporal. La activity conserva únicamente el slot de signal Temporal vía heartbeat ([ADR-0003](./0003-temporal-orchestration.md)). Si el OTP no llega en 4 minutos, abort + retry; jamás "reusar después".
 
 Esta política es revisable en v2 si encontramos un caso de uso real que la justifique (ej. scrapes de muy alta frecuencia donde el ahorro de login compense las contras).
 
@@ -66,5 +66,9 @@ Considerada para v2. Posible beneficio: el banco confía más en un device conoc
 ### D — Reusar sólo el browser binary, no el state (warm process pool)
 
 Considerada como optimización de performance pura. **Pospuesta**: la ganancia (cold start de Chromium) es del orden de segundos, vs decenas de segundos del login. No es prioritario. Reevaluable en v2 si el cold start se vuelve dominante.
+
+## Cross-references
+
+- **ADR-0019** — [BrowserSidecar: proceso dedicado que mantiene la sesión Playwright/CDP durante OTP wait](./0019-browser-sidecar-otp.md): detalla cómo se preserva el browser context *dentro* del job durante la ventana OTP, complementando la política de este ADR (que prohíbe persistencia *entre* jobs).
 
 ## Status: Accepted (2026-05-09)
