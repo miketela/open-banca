@@ -1,0 +1,584 @@
+# PRD: open-banca v1
+
+**Author:** Mike Portela
+**Date:** 2026-05-09
+**Status:** Approved
+**Version:** 1.0
+**Taskmaster Optimized:** Yes
+
+---
+
+## Executive Summary
+
+Panama no tiene Open Banking. Acceder a información financiera propia requiere entrar a la web del banco y descargar reportes Excel manualmente — tedioso, no automatizable de forma confiable porque las webs cambian.
+
+`open-banca` es una API REST self-hosted, open source AGPL-3.0, que automatiza la captura de datos bancarios usando agentes de IA + Playwright. Un agente Mapper genera un `map.json` declarativo, un runner Playwright sin LLM lo ejecuta cada corrida, agentes Validator/Judge supervisan, y un Remapper repara cuando el flujo cambia. Banco piloto: **Banco General**. Goal secundario: presión institucional sobre bancos PA — la licencia AGPL fuerza que cualquier servicio derivado quede abierto.
+
+Impacto esperado: usuario puede consumir su data financiera vía un GET autenticado en lugar de un proceso manual repetitivo, con resilience automática frente a cambios de UI del banco.
+
+---
+
+## Problem Statement
+
+### Current Situation
+
+Bancos de Panamá (Banco General, BAC, Banistmo, Global Bank, etc.) no exponen Open Banking ni APIs públicas. La única vía de acceso a la propia información financiera es la banca en línea. Cada usuario debe:
+
+1. Loguearse (típicamente con OTP — Banco General usa Clave Móvil push).
+2. Navegar a cada cuenta (ahorro, corriente, tarjeta de crédito, préstamo).
+3. Configurar rango de fechas.
+4. Descargar Excel.
+5. Repetir por cada cuenta.
+6. Procesar manualmente para análisis o consolidación con otras cuentas.
+
+Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcoded) rompe con cada redeploy del banco.
+
+### User Impact
+
+- **Quién**: usuarios self-hosted del proyecto — desarrolladores, contadores, herramientas de finanzas personales como `maybe`, fintechs PA que quieran agregar data sin convenios bancarios.
+- **Pain**: 15–30 min/mes por cuenta para consolidar; alto riesgo de errores por copy-paste manual; imposibilidad de automatizar dashboards o alertas.
+- **Severidad**: Alta para usuarios con 4+ cuentas; bloqueante para herramientas de PFM en mercado PA.
+
+### Business Impact
+
+- **Costo del problema**: barrera estructural a fintechs PA. Imposibilita productos financieros de tercera generación (PFM, agregadores, advisors) sin convenios uno-a-uno con cada banco.
+- **Oportunidad**: open-source la solución → presión institucional, demuestra que la data ya es accesible al usuario, mal entregada por defecto.
+- **Strategic**: alineado con tendencia regional (México, Brasil, Chile, UE) hacia Open Banking; se anticipa al regulador.
+
+### Why Solve This Now?
+
+- LLMs con vision (Claude Sonnet 4.6, GPT-5) ya son capaces de mapear flujos web complejos confiable y barato.
+- DeepSeek V3 hace operación recurrente (validator/judge) viable a costo near-zero.
+- Librería `browser-use` resolvió el ecosistema CDP/agent loop con calidad production.
+- Temporal + sqlcipher hacen self-hosting realista sin reinventar durable execution.
+
+---
+
+## Goals & Success Metrics
+
+### Goal 1: Captura confiable de Banco General (piloto)
+
+- **Métrica**: success rate de scrape jobs (terminan en `job.completed`).
+- **Baseline**: 0% (no existe).
+- **Target**: ≥ 95% sobre 100 corridas reales en 30 días.
+- **Timeframe**: 60 días post-lanzamiento de v1.
+- **Measurement**: contador en SQLite + dashboard Langfuse.
+
+### Goal 2: Self-healing efectivo
+
+- **Métrica**: % de rupturas detectadas que el sistema repara sin intervención humana (auto-remap exitoso).
+- **Baseline**: 0% (no existe).
+- **Target**: ≥ 70% (resto requiere HITL via webhook `job.remap_proposed`).
+- **Timeframe**: 90 días.
+- **Measurement**: log de Judge + outcome de Remapper en Langfuse.
+
+### Goal 3: Costo por scrape acotado
+
+- **Métrica**: USD promedio de costo LLM por scrape job exitoso.
+- **Baseline**: n/a.
+- **Target**: ≤ $0.10/scrape en estado estable (incremental, sin remap). Mapping inicial puede llegar a $0.50.
+- **Timeframe**: 60 días.
+- **Measurement**: cost guardrails enforcement + LiteLLM cost tracking.
+
+### Goal 4: Self-host viable
+
+- **Métrica**: tiempo desde `git clone` hasta primer scrape exitoso para un dev externo siguiendo docs.
+- **Target**: ≤ 30 minutos.
+- **Timeframe**: validación pre-lanzamiento.
+- **Measurement**: prueba con 3 betatesters externos.
+
+### Goal 5: Seguridad de credenciales
+
+- **Métrica**: 0 fugas de credenciales bancarias del usuario en logs/traces/HAR (verificado con canary test).
+- **Target**: 100% (cero tolerancia).
+- **Measurement**: canary CI test en cada PR.
+
+---
+
+## User Stories
+
+### Story 1: Primer scrape de un banco recién agregado
+
+**Como** developer self-hosting open-banca,
+**Quiero** dar credenciales de mi cuenta Banco General y obtener un dump completo de mis transacciones históricas (últimos 6 meses, límite del banco),
+**Para** consolidar finanzas en mi sistema sin descarga manual.
+
+**Acceptance Criteria:**
+- [ ] `POST /scrape {bank: "banco_general", credential_ref: "...", full: true}` devuelve `job_id` en < 1s.
+- [ ] Webhook `job.created` se dispara inmediatamente.
+- [ ] Si no existe `map.json` para Banco General, Mapper agent corre automáticamente.
+- [ ] Webhook `job.otp_required` dispara cuando llega a Clave Móvil.
+- [ ] Cliente confirma OTP via `POST /jobs/{id}/otp-confirmed` dentro de 4 min.
+- [ ] Excel descargados por cada cuenta detectada (ahorro, corriente, TC).
+- [ ] Parser DSL convierte Excel → schema canónico unificado.
+- [ ] Webhook `job.completed` dispara con link a `GET /jobs/{id}/result`.
+- [ ] Result incluye: cuentas, balances, transacciones (deduplicadas).
+
+**Task Breakdown Hint:**
+- API + Temporal scaffolding (16h).
+- Mapper agent integration browser-use (12h).
+- Scraper runner DSL executor (16h).
+- Excel parser DSL engine (12h).
+- Banco General initial mapping run (8h).
+- Webhook emitter + HMAC (6h).
+- E2E con HAR fixture (10h).
+
+**Dependencies**: REQ-001..REQ-008.
+
+---
+
+### Story 2: Scrape incremental periódico
+
+**Como** usuario con scrape inicial completo,
+**Quiero** correr `POST /scrape {since: <last_cursor>}` periódicamente para traer sólo nuevos movimientos,
+**Para** mantener mi dashboard actualizado sin re-procesar todo.
+
+**Acceptance Criteria:**
+- [ ] `since` cursor se persiste por cuenta tras cada scrape exitoso.
+- [ ] Range de descarga = ventana desde `since - 3 días` (buffer) hasta hoy.
+- [ ] Dedup en 3 niveles: ID embebido del banco → fingerprint hash → fuzzy transfers cross-account.
+- [ ] Transferencias internas detectadas y emparejadas (no cuentan dos veces).
+- [ ] Result devuelve sólo registros nuevos.
+
+**Task Breakdown Hint:**
+- Cursor storage + API params (4h).
+- Dedup engine 3-level (12h).
+- Transfer matching cross-account (8h).
+- Tests con fixture (6h).
+
+**Dependencies**: Story 1.
+
+---
+
+### Story 3: Self-healing cuando el banco cambia
+
+**Como** operador self-hosted,
+**Quiero** que cuando Banco General cambie un selector o flujo, el sistema detecte la ruptura, intente un remap automático, y solo me alerte si requiere mi review,
+**Para** no maintenance manual constante.
+
+**Acceptance Criteria:**
+- [ ] Scraper runner emite `BreakageEvent` cuando: selector null, timeout, schema mismatch, HTTP error en step conocido.
+- [ ] Judge agent (DeepSeek) recibe el evento + screenshot + último step y emite decisión + `confidence` + `risk`.
+- [ ] Si `confidence ≥ 0.85 AND risk == low`, Remapper corre, parche se aplica, job se reintenta.
+- [ ] Si no, webhook `job.remap_proposed` se emite con diff del map.
+- [ ] Endpoint `POST /maps/{bank}/proposals/{id}/approve` aplica el patch.
+- [ ] TTL del proposal: 24h.
+- [ ] Cap: max 3 remap attempts por banco por 24h.
+
+**Task Breakdown Hint:**
+- BreakageEvent contract + emission (6h).
+- Judge agent PydanticAI + DeepSeek (10h).
+- Remapper agent browser-use + Claude (12h).
+- Auto-apply + git commit map (4h).
+- HITL endpoint + proposal state (8h).
+
+**Dependencies**: Story 1.
+
+---
+
+### Story 4: Cuentas múltiples por login
+
+**Como** usuario Banco General con savings + checking + 2 tarjetas crédito,
+**Quiero** que un solo scrape job traiga todas las cuentas detectadas en mi login,
+**Para** no hacer 4 jobs separados.
+
+**Acceptance Criteria:**
+- [ ] Default = detect-all (sin pasar `accounts:[]` filter).
+- [ ] Schema unificado con discriminator `account_type` (savings, checking, credit_card).
+- [ ] TC payload incluye: credit_limit, available_credit, cut_date, min_payment, payment_due_date, statement_balance.
+- [ ] Cada cuenta tiene su propia descarga Excel (formato puede diferir entre savings y TC).
+- [ ] Préstamos NO en v1 (out of scope).
+
+**Dependencies**: Story 1.
+
+---
+
+### Story 5: Operador hace setup en 30 min
+
+**Como** developer que clona el repo por primera vez,
+**Quiero** correr `docker-compose up` y tener API levantada con un comando claro para registrar primer banco,
+**Para** validar la herramienta sin complejidad de infra.
+
+**Acceptance Criteria:**
+- [ ] `docker-compose.yml` levanta: api, temporal-server, temporal-worker, sandbox-runner, postgres (para Temporal). Langfuse opcional via profile.
+- [ ] `OPEN_BANCA_MASTER_PASSPHRASE` env o prompt al boot.
+- [ ] CLI `open-banca register-credentials --bank banco_general` interactivo.
+- [ ] Setup docs: README + docs/05-operations/deployment.md con paso a paso.
+- [ ] First scrape funciona sin tocar código.
+
+**Dependencies**: Stories 1, 4.
+
+---
+
+## Functional Requirements
+
+### Must Have (P0)
+
+#### REQ-001: API REST FastAPI
+
+10 endpoints (ver `docs/02-components/api.md`):
+- `POST /scrape`, `GET /jobs/{id}`, `GET /jobs/{id}/result`, `POST /jobs/{id}/otp-confirmed`, `POST /jobs/{id}/cancel`.
+- `POST /maps/{bank}/proposals/{id}/approve|reject`.
+- `GET /banks`, `GET /accounts`, `POST /webhooks/test`.
+
+**AC**: idempotency keys, rate limiting por banco, bearer token auth single-org, OpenAPI 3.1 spec auto-generada.
+
+#### REQ-002: Temporal orquestador
+
+`ScrapeJobWorkflow` + child workflows (`MapBankWorkflow`, `RemapBankWorkflow`) + 11 activities (`LoginActivity`, `NavigateActivity`, `DownloadExcelActivity`, `ParseExcelActivity`, `ValidateActivity`, `JudgeActivity`, `MapperAgentActivity`, `RemapperAgentActivity`, `EmitWebhookActivity`, `OTPSignalAwaitActivity`, etc.) + 3 signals (`otp_confirmed`, `remap_approved`, `cancel_job`). Detalle en `docs/02-components/orchestrator.md`.
+
+**AC**: durabilidad cross-restart, time-skipping testing, replay determinístico.
+
+#### REQ-003: Mapper agent (browser-use + Claude vision)
+
+Agente que explora login + dashboard + descarga Excel y emite `map.json` declarativo. Usa `sensitive_data` para que el LLM nunca vea creds plaintext.
+
+**AC**: produce JSON Schema-valid, ejecutable por Scraper runner sin modificación.
+
+#### REQ-004: Scraper runner Playwright sin LLM
+
+Lee `map.json`, ejecuta steps secuencialmente, emite `BreakageEvent` al fallar. 9 step types (navigate, click, fill, wait_for_selector, wait_for_download, select_date_range, assert_text, extract_table, download_file). Detalle en `docs/02-components/scraper-runner.md`.
+
+**AC**: 0 llamadas LLM en hot path. Replay-able contra HAR fixture.
+
+#### REQ-005: Validator + Judge agents (PydanticAI + DeepSeek)
+
+Validator hace checks heurísticos + LLM cuando ambiguo. Judge analiza BreakageEvent + screenshot y decide ruta (retry / partial_remap / full_remap / abort / human_required) + confidence + risk.
+
+**AC**: confidence ≥ 0.85 AND risk == low → auto-apply remap. Sino → HITL.
+
+#### REQ-006: Remapper agent (browser-use + Claude vision)
+
+Re-explora la zona afectada y emite patch al `map.json`. Auto-apply o emit webhook según Judge.
+
+**AC**: dry-run validation antes de full apply (sin enviar creds reales).
+
+#### REQ-007: Excel parser declarativo (DSL)
+
+Helpers whitelisted: `parse_date`, `extract_regex`, `normalize_amount`, `lookup_table`, `coalesce`, `trim`, `to_upper`, `to_lower`, `concat`. `parser.json` por banco define column mappings. account_type inference. id_strategy (embedded vs fingerprint). Detalle en `docs/02-components/parser.md`.
+
+**AC**: NO ejecuta Python arbitrario; ejecuta dentro del sandbox sin riesgo RCE.
+
+#### REQ-008: Storage SQLite + sqlcipher
+
+Tablas: credentials, jobs, accounts, transactions, dedup_index, audit_log, webhook_outbox. Maps en filesystem versionados con git tags. Dedup 3 niveles. Detalle en `docs/02-components/storage.md`.
+
+**AC**: secrets cifrados con Argon2id KDF + AES-GCM. Backup del SQLite cifrado es opaco sin master passphrase.
+
+#### REQ-009: Sandbox Docker per-job
+
+Container efímero por scrape. Network policy: allowlist (dominio banco + APIs LLM). Drop everything else. caps dropped, seccomp profile, AppArmor, read-only rootfs (excepto tmpfs y /downloads), no-new-privileges, user non-root, resource limits (cpu, mem, pids). Detalle en `docs/04-security/sandbox.md`.
+
+**AC**: container se destruye al terminar job. Filesystem no persiste cross-job.
+
+#### REQ-010: Webhooks HMAC-SHA256
+
+7 eventos: `job.created`, `job.otp_required`, `job.progress`, `job.completed`, `job.failed`, `job.remap_proposed`, `job.human_required`. Header `X-OpenBanca-Signature: t=<ts>,v1=<hmac>`. Retry exponential hasta 6 intentos en 24h. Anti-replay window ±5 min. Endpoint `/time` para diagnosis clock skew. Detalle en `docs/02-components/webhooks.md`.
+
+**AC**: cliente puede verificar firma con HMAC-SHA256 + secret compartido. DLQ si excede retry budget.
+
+#### REQ-011: Cost guardrails
+
+- Max **$0.50 LLM cost/job** (mapper Claude más caro; validator/judge DeepSeek baratos).
+- Max **3 remap attempts por banco por 24h**.
+- Max **1 mapping run por banco por 24h** (defensivo, override por config).
+- Max **2 logins fallidos consecutivos** → circuit breaker 1h.
+- Max tokens per agent per job, abort si excede.
+
+**AC**: enforcement central (no por-agente). `job.failed` con `reason: budget_exceeded`.
+
+#### REQ-012: Banco General piloto end-to-end
+
+`banks/banco_general/map.json` + `parser.json` + fixtures HAR + tests. Auth con Clave Móvil. Cuentas: savings, checking, credit_card. Detalle + open questions en `docs/06-banks/banco-general.md`.
+
+**AC**: 95% success rate sobre 100 scrapes reales.
+
+### Should Have (P1)
+
+#### REQ-013: Langfuse self-hosted opcional
+
+Docker-compose service con profile `langfuse`. Off por default (no rompe principio self-host puro). Trazas de Mapper, Validator, Judge, Remapper.
+
+#### REQ-014: OTel para resto
+
+Métricas API + Temporal + Sandbox. Trace correlation con `trace_id` propagado end-to-end.
+
+#### REQ-015: Testing infrastructure
+
+Pyramid: unit (PydanticAI test models, parser DSL contra fixtures), integration (Temporal time-skipping, HAR replay), E2E (smoke contra banco real opt-in via env var).
+
+#### REQ-016: Filter middleware redact + canary CI test
+
+Garantía de que credenciales nunca entran a Langfuse, OTel, HAR, application logs. Canary `SECRET_CANARY_VALUE` + grep en CI. **Issue #1.**
+
+#### REQ-017: Community maps trust model
+
+Linter 12 reglas, cosign signing keyless GitHub OIDC para maps oficiales. Pipeline CI valida community PRs. **Issue #4.**
+
+### Could Have (P2)
+
+#### REQ-018: docker-socket-proxy hardening
+
+Golden config + smoke test endpoints prohibidos. **Issue #2.**
+
+#### REQ-019: browser-use sensitive_data fuzz test
+
+Validar empíricamente que LLM nunca recibe plaintext. **Issue #3.**
+
+#### REQ-020: Webhook clock skew /time endpoint
+
+Diagnosis para clientes con NTP roto. **Issue #5.**
+
+---
+
+## Non-Functional Requirements
+
+### Performance
+
+- API `POST /scrape`: response < 1s (devuelve job_id, work async).
+- Scrape job end-to-end (banco con 3 cuentas, range 30 días): p50 < 90s, p95 < 180s, p99 < 300s.
+- OTP wait hard cap: 4 min (banco expira sesión a 5).
+- Mapper run (one-time): max 5 min, max $0.50 cost.
+
+### Security
+
+- Credenciales bancarias cifradas at-rest con Argon2id + AES-GCM (sqlcipher).
+- Master passphrase nunca persiste; solo en memoria.
+- LLMs nunca reciben plaintext de credenciales (sensitive_data injection en browser-use).
+- Network policy estricta por banco en sandbox (allowlist).
+- Webhooks firmados HMAC-SHA256 + anti-replay timestamp.
+- Threat model STRIDE completo (17 amenazas categorizadas) en `docs/04-security/threat-model.md`.
+
+### Reliability
+
+- Durable execution via Temporal: workflows sobreviven restart de worker/server.
+- Retry policies con exponential backoff por activity.
+- Circuit breakers: 2 fail logins → 1h cooldown.
+- Rate limiting por banco: max 1 scrape concurrente por (bank, credential).
+
+### Observability
+
+- 100% de jobs trackeados en Temporal UI.
+- Langfuse traces para todos los LLM calls (cuando habilitado).
+- Playwright HAR + screenshots por job (sanitizados de creds).
+- SLI/SLO definidos: success rate, latencia, costo medio, tasa de remap.
+
+### Compliance / Legal
+
+- License AGPL-3.0 — derivative services deben permanecer abiertos.
+- No tracking del usuario (sin telemetry phone-home).
+- Operador self-hosted es responsable del cumplimiento legal local (Ley 81 PA de protección de datos, etc.).
+
+---
+
+## Technical Considerations
+
+### Stack confirmado
+
+| Área | Tech |
+|------|------|
+| Lenguaje | Python 3.12+ |
+| Package mgr | uv |
+| Lint | Ruff |
+| Type check | Pyrefly |
+| Web framework | FastAPI |
+| Agents | PydanticAI |
+| LLM gateway | LiteLLM |
+| Browser agent | browser-use (lib MIT) |
+| Scraper | Playwright |
+| Excel | openpyxl |
+| Workflow | Temporal (Python SDK) |
+| Storage | SQLite + sqlcipher |
+| Monorepo | Nx + @nxlv/python |
+| Sandbox | Docker per-job |
+| Observability | Langfuse + OTel |
+
+### Modelos LLM
+
+- Mapper, Remapper: Claude Sonnet 4.6 (vision) via LiteLLM → Anthropic.
+- Validator, Judge: DeepSeek V3 (texto) via LiteLLM → DeepSeek.
+- Scraper: sin LLM.
+
+### Arquitectura
+
+Hexagonal/Clean. 11 ports nombrados (BankMapPort, BrowserDriverPort, LLMPort, JobStorePort, SecretStorePort, EventBusPort, ExcelParserPort, SandboxPort, ObservabilityPort, ClockPort, WorkflowEnginePort). Adaptadores: api, orchestrator, browser, llm, storage, parsing, sandbox. Detalle en `docs/01-architecture/hexagonal.md`.
+
+### Decisiones registradas
+
+15 ADRs en `docs/adr/`. Source of truth para todos los trade-offs.
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: Foundation (semanas 1–3)
+
+- Monorepo Nx setup + Python uv workspaces.
+- Hexagonal scaffolding (domain + application layers).
+- FastAPI skeleton con 10 endpoints (stubs).
+- Temporal local setup (docker-compose dev).
+- SQLite + sqlcipher storage adapter.
+- Secret vault con Argon2id + AES-GCM.
+- CI: ruff, pyrefly, pytest, canary redact test.
+
+### Phase 2: Scraper runner (semanas 3–5)
+
+- Playwright runner (sin LLM) ejecuta `map.json`.
+- 9 step types implementados.
+- BreakageEvent contract.
+- HAR record/replay testing.
+
+### Phase 3: Mapper + Banco General piloto (semanas 5–8)
+
+- Mapper agent sobre browser-use + Claude vision.
+- Primer mapping run real Banco General → produce `map.json`.
+- Excel parser DSL engine.
+- `parser.json` para Banco General savings + checking + TC.
+- Schema canónico unificado.
+
+### Phase 4: Self-healing (semanas 8–10)
+
+- Validator + Judge agents (PydanticAI + DeepSeek).
+- Remapper agent.
+- Confidence/risk routing (auto vs HITL).
+- Proposal endpoints + TTL + git apply.
+
+### Phase 5: Operations + security (semanas 10–12)
+
+- Sandbox Docker per-job + network policies.
+- docker-socket-proxy hardening.
+- Webhooks HMAC + DLQ.
+- Cost guardrails enforcement.
+- Observability: Langfuse + OTel.
+- docker-compose layout + first-run UX.
+- 5 GitHub issues (security risks) cerrados.
+
+### Phase 6: Hardening + release (semanas 12–14)
+
+- E2E smoke con creds reales (3 betatesters).
+- Stress test 100 scrapes.
+- Documentación completa.
+- v1.0.0 tag + release notes.
+
+---
+
+## Out of Scope (v1)
+
+- **Préstamos hipotecarios / personales** (v2).
+- **Inversiones, fideicomisos** (v2).
+- **Captcha resolving** — bancos PA no lo usan por ahora; cuando aparezca, vision LLM o servicio externo (decisión postergada).
+- **UI / frontend** — solo API.
+- **Multi-tenant SaaS** — contrato es self-hosted single-org. Multi-tenant lo construye quien quiera encima.
+- **Stealth / anti-bot evasion sofisticado** — usamos real browser via CDP; si banco bloquea, escalamos.
+- **Otros bancos PA** además de Banco General — BAC, Banistmo, Global Bank son v1.x (post-piloto exitoso).
+- **Categorización automática de transacciones** (responsabilidad del cliente).
+- **Notificaciones push/email/SMS al usuario final** — solo webhooks.
+
+---
+
+## Open Questions & Risks
+
+### Open Questions (validar al hacer primer mapping real Banco General)
+
+Ver `docs/06-banks/banco-general.md` sección "Open Questions". Resumen:
+
+1. ¿Excel de tarjeta de crédito viene en formato distinto al de savings? (asumido sí).
+2. ¿Hay rate limit del banco? (asumido no agresivo).
+3. ¿El portal soporta múltiples sesiones concurrentes para misma credencial?
+4. ¿Qué pasa si Clave Móvil no llega (push perdido)? ¿Hay retry de OTP?
+5. ¿El historial real es de 6 meses o más?
+6. ¿Hay diferencias entre el portal personal y el empresarial?
+
+### Risks (gate-keepers, **issues abiertos en GitHub**)
+
+1. **Filter middleware redact + canary CI** ([Issue #1](https://github.com/miketela/open-banca/issues/1)).
+2. **docker-socket-proxy hardening** ([Issue #2](https://github.com/miketela/open-banca/issues/2)).
+3. **browser-use sensitive_data fuzz** ([Issue #3](https://github.com/miketela/open-banca/issues/3)).
+4. **Cosign keyless decision** ([Issue #4](https://github.com/miketela/open-banca/issues/4)).
+5. **Webhook clock skew /time** ([Issue #5](https://github.com/miketela/open-banca/issues/5)).
+
+Otros riesgos:
+
+- **Banco bloquea cuenta del usuario por intentos fallidos**. Mitigación: circuit breaker 2 fails → 1h cooldown, dry-run de Remapper antes de apply real.
+- **LLM prompt injection desde el banco** (si banco renderiza contenido user-controlled, ej: nombre de beneficiario en transferencia). Mitigación: structured output schemas estrictos, no follow-instructions del DOM.
+- **Map malicioso community** que pasa el linter. Mitigación: network whitelist sandbox + monitor egresos.
+- **Cosign + Sigstore downtime**: firmas existentes siguen verificables; nuevas firmas blocked. Aceptado.
+
+---
+
+## Validation Checkpoints
+
+### Checkpoint 1 (post-Phase 1): Foundation funciona
+
+- `docker-compose up` arranca todo en host fresh.
+- `POST /scrape` devuelve job_id pero workflow es no-op (solo emit `job.completed`).
+- Canary test pasa.
+- CI green.
+
+### Checkpoint 2 (post-Phase 2): Scraper runner funciona contra HAR
+
+- Replay de HAR fixture produce extracción esperada.
+- BreakageEvent emitido cuando selector se rompe en HAR modificado.
+- 0 LLM calls en hot path verificado.
+
+### Checkpoint 3 (post-Phase 3): Banco General real
+
+- Primer scrape exitoso contra Banco General real (con creds del operador).
+- Excel descargados + parseados.
+- Schema canónico válido.
+
+### Checkpoint 4 (post-Phase 4): Self-healing demo
+
+- Mod del map (cambiar selector) → scraper rompe → Judge decide remap → Remapper repara → retry exitoso.
+- HITL path testado: confidence < 0.85 → webhook → approve → retry.
+
+### Checkpoint 5 (post-Phase 5): Operations + security
+
+- 5 GitHub issues cerrados.
+- Threat model controles implementados.
+- Stress test 100 scrapes con success rate ≥ 95%.
+
+### Checkpoint 6 (release): v1.0.0
+
+- 3 betatesters externos completan setup en ≤ 30 min.
+- Goals 1–5 medidos y on-track.
+- Release notes + docs públicas.
+
+---
+
+## Appendix: Task Breakdown Hints
+
+### Suggested task count
+
+~40–50 tasks principales. ~150–200 subtasks tras `expand --all`.
+
+### Phase distribution
+
+- Phase 1: 8 tasks
+- Phase 2: 6 tasks
+- Phase 3: 9 tasks
+- Phase 4: 7 tasks
+- Phase 5: 8 tasks
+- Phase 6: 5 tasks
+- USER-TEST checkpoints: 6 (al final de cada phase).
+
+### Source of truth para taskmaster
+
+- `docs/00-overview.md` — visión + stack.
+- `docs/DECISIONS.md` — todas las decisiones consolidadas.
+- `docs/adr/*.md` — 15 ADRs Nygard.
+- `docs/01-architecture/*.md` — 4 docs (macro, hexagonal, multi-agent, data-flow).
+- `docs/02-components/*.md` — 10 component specs.
+- `docs/03-flows/*.md` — 6 flujos end-to-end.
+- `docs/04-security/*.md` — 4 security docs.
+- `docs/05-operations/*.md` — 4 ops docs.
+- `docs/06-banks/banco-general.md` — banco piloto.
+
+### Convenciones para task breakdown
+
+- Tasks atómicos: 4–8h cada uno.
+- Branch naming: `task-{id}-{slug}`.
+- Cada task debe tener: descripción, AC (testable), dependencias, estimado.
+- USER-TEST tasks cada ~5 tasks (validación humana antes de avanzar).
+- Tests obligatorios en cada task de implementación (pyramid).
+- Git commit per subtask, merge a task branch al cerrar todos.
