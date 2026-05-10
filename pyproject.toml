@@ -95,6 +95,7 @@ markers = [
     "live: mark test as requiring live bank credentials (deselect with '-m not live')",
     "unit: fast unit tests with no external dependencies",
     "integration: tests requiring external services",
+    "canary: CI security gate — secrets/PII must never appear in logs/HAR/OTel (REQ-016)",
 ]
 addopts = "-ra --tb=short -q --import-mode=importlib"
 
