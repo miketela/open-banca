@@ -3,9 +3,10 @@
 from open_banca_storage.config import StorageSettings, get_settings
 from open_banca_storage.connection import ConnectionPool, KeyDerivation, PassthroughKeyDerivation
 from open_banca_storage.migrations import migrate
-from open_banca_storage.repositories import SqliteJobStore
+from open_banca_storage.repositories import BreakageRepository, SqliteJobStore
 
 __all__ = [
+    "BreakageRepository",
     "ConnectionPool",
     "KeyDerivation",
     "PassthroughKeyDerivation",

@@ -56,15 +56,23 @@ def capture_screenshot(page: object) -> bytes:
     return page.screenshot(type="png")  # type: ignore[attr-defined]
 
 
+_DOM_SNAPSHOT_MAX_BYTES = 50 * 1024  # 50 KB hard cap (task-10)
+_DOM_TRUNCATION_MARKER = "\n[TRUNCATED]"
+
+
 def dom_excerpt(page: object, selector: str | None = None) -> str:
-    """Return a short DOM snippet for debugging, with value= attributes stripped.
+    """Return a DOM snapshot for debugging, with value= attributes stripped.
+
+    The result is capped at 50 KB (UTF-8 bytes).  If the redacted HTML exceeds
+    this limit, the string is truncated and a ``[TRUNCATED]`` marker appended.
 
     Args:
         page: A Playwright Page object.
         selector: Optional CSS selector to narrow the excerpt to a subtree.
 
     Returns:
-        Up to 2000 chars of HTML with value= attributes redacted.
+        Up to 50 KB of HTML with value= attributes redacted, suffixed with
+        ``[TRUNCATED]`` when the original was larger.
     """
     try:
         if selector:
@@ -76,7 +84,14 @@ def dom_excerpt(page: object, selector: str | None = None) -> str:
         return f"<dom_excerpt_error: {exc}>"
 
     redacted = _VALUE_ATTR_RE.sub(r'\1\2[REDACTED]\3', raw)
-    return redacted[:2000]
+
+    encoded = redacted.encode("utf-8")
+    if len(encoded) > _DOM_SNAPSHOT_MAX_BYTES:
+        # Truncate cleanly on a character boundary at the byte limit, then append marker.
+        truncated = encoded[:_DOM_SNAPSHOT_MAX_BYTES].decode("utf-8", errors="ignore")
+        return truncated + _DOM_TRUNCATION_MARKER
+
+    return redacted
 
 
 def screenshot_ref(png_bytes: bytes) -> str:
