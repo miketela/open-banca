@@ -2,26 +2,44 @@
 #
 # Levanta el stack completo: api, temporal, workers, postgres, y docker-socket-proxy.
 # Langfuse opcional via `--profile langfuse`.
+# Temporal UI opcional via `--profile ui`.
 #
 # Uso:
 #   docker compose up -d
-#   docker compose --profile langfuse up -d   # incluye Langfuse
+#   docker compose --profile langfuse up -d    # incluye Langfuse + postgres-langfuse
+#   docker compose --profile ui up -d          # incluye Temporal UI
+#   docker compose --profile langfuse --profile ui up -d
 #   docker compose down
-#   docker compose config --quiet             # validar sin daemon
+#   docker compose config --quiet              # validar sin daemon
+#   docker compose build sandbox-runner        # build imagen sandbox (no arranca como servicio)
 #
-# Requerimientos pre-arranque:
-#   Ver docs/05-operations/deployment.md § Checklist de seguridad de memoria
+# Requerimientos pre-arranque (host):
+#   Ver docs/05-operations/deployment.md § Checklist de seguridad de memoria (M-1..M-7)
 #
-# REQ-018: docker-socket-proxy (P0) — temporal-worker habla con el proxy en
-#   tcp://docker-socket-proxy:2375, nunca con /var/run/docker.sock directamente.
-#   Endpoints permitidos: containers list/create/start/kill/wait/inspect/logs,
-#   images list.  Todo lo demás → 403 (BUILD, EXEC, SECRETS, SWARM, etc.)
+# Passphrase:
+#   OPEN_BANCA_MASTER_PASSPHRASE se pasa como env var (Security Critical Rule #6 — "Solo env").
+#   Operadores que prefieran Docker secrets pueden montar /run/secrets/master_passphrase
+#   y leerla en el entrypoint — fuera de scope v1, pero documentado aquí como opción.
+#
+# REQ-018: docker-socket-proxy — temporal-worker habla con el proxy en
+#   tcp://docker-socket-proxy:2375, NUNCA con /var/run/docker.sock directamente.
+#   Endpoints permitidos: containers list/create/start/kill/wait/inspect/logs, images list.
+#   Todo lo demás → 403. Smoke test obligatorio en CI (ver ADR-0009).
+#
+# sandbox-runner:
+#   No es un servicio long-running. Profile "build-only" → docker compose build sandbox-runner.
+#   El temporal-worker spawnea instancias per-job con flags ADR-0009:
+#   --cap-drop=ALL --read-only --no-new-privileges --ipc=none
+#   --memory=2g --cpus=1.5 --pids-limit=256 --network=sandbox-<job_id>
+#   TTL hard: 6 min.
+#
+# open-banca-internal: internal=false intencional — el worker necesita egress para
+#   pull de imágenes sandbox y llamadas a LLM APIs (anthropic.com, deepseek.com).
+#   El aislamiento de red se hace a nivel de los containers sandbox efímeros (ADR-0009).
 #
 # CVE notes (tecnativa/docker-socket-proxy):
-#   No CVEs críticos conocidos hasta 2025-05.  La imagen no expone el socket
-#   al host — el proxy escucha únicamente en la red interna open-banca-internal.
-#   Imagen pinada a :latest; operadores de producción deben pinear por digest
-#   con Trivy scan en pipeline (ver docs/04-security/sandbox.md §Hardening imagen).
+#   El proxy escucha únicamente en la red interna open-banca-internal.
+#   Operadores de producción deben pinear imagen por digest con Trivy scan en pipeline.
 
 services:
 
@@ -38,7 +56,7 @@ services:
     environment:
       # --- ALLOWED: mínimo necesario para spawn/manage sandbox containers ---
       CONTAINERS: "1"   # GET  /containers/json, /containers/{id}/json, /containers/{id}/logs
-      IMAGES: "1"       # GET  /images/json  (pull ya no es necesario en runtime)
+      IMAGES: "1"       # GET  /images/json
       NETWORKS: "1"     # GET  /networks (worker crea redes efímeras vía SDK)
       POST: "1"         # POST /containers/create, /containers/{id}/start,
                         #      /containers/{id}/kill, /containers/{id}/wait,
@@ -67,77 +85,46 @@ services:
       core:
         soft: 0
         hard: 0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2375/_ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   # ---------------------------------------------------------------------------
-  # api — FastAPI REST
+  # postgres-temporal — backend PostgreSQL para Temporal
   # ---------------------------------------------------------------------------
-  api:
-    build:
-      context: .
-      target: runtime
-    container_name: open-banca-api
+  postgres-temporal:
+    image: postgres:16-alpine
+    container_name: open-banca-postgres-temporal
     restart: unless-stopped
-    depends_on:
-      temporal-server:
-        condition: service_started
-    ports:
-      - "${OPEN_BANCA_API_PORT:-8080}:8080"
-    volumes:
-      - sqlite-data:/data
-      - maps-fs:/maps:ro
-      - job-artifacts:/artifacts:ro
     environment:
-      OPEN_BANCA_MASTER_PASSPHRASE: "${OPEN_BANCA_MASTER_PASSPHRASE}"
-      WEBHOOK_HMAC_SECRET: "${WEBHOOK_HMAC_SECRET}"
-      API_KEY: "${API_KEY}"
-      TEMPORAL_ADDRESS: "temporal-server:7233"
-      LANGFUSE_ENABLED: "${LANGFUSE_ENABLED:-false}"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
-      OPEN_BANCA_ENV: "${OPEN_BANCA_ENV:-production}"
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: "${TEMPORAL_DB_PASSWORD:?TEMPORAL_DB_PASSWORD is required}"
+      POSTGRES_DB: temporal
+    volumes:
+      - pg-temporal:/var/lib/postgresql/data
     networks:
-      - open-banca-public
       - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     ulimits:
       core:
         soft: 0
         hard: 0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # ---------------------------------------------------------------------------
-  # temporal-worker — spawn-ea sandbox containers via docker-socket-proxy
-  # NOTA: NO monta /var/run/docker.sock directamente (REQ-018)
-  # ---------------------------------------------------------------------------
-  temporal-worker:
-    build:
-      context: .
-      target: runtime
-    container_name: open-banca-temporal-worker
-    restart: unless-stopped
-    depends_on:
-      temporal-server:
-        condition: service_started
-      docker-socket-proxy:
-        condition: service_started
-    volumes:
-      - maps-fs:/maps:ro
-      - job-artifacts:/artifacts
-      # NO bind mount de /var/run/docker.sock — se usa docker-socket-proxy
-    environment:
-      TEMPORAL_ADDRESS: "temporal-server:7233"
-      TASK_QUEUE: "${TASK_QUEUE:-open-banca-main}"
-      WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-3}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
-      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
-      # DOCKER_HOST apunta al proxy — NO al socket del host
-      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
-    networks:
-      - open-banca-internal
-    ulimits:
-      core:
-        soft: 0
-        hard: 0
-
-  # ---------------------------------------------------------------------------
-  # temporal-server
+  # temporal-server — orquestador Temporal con auto-setup
   # ---------------------------------------------------------------------------
   temporal-server:
     image: temporalio/auto-setup:1.27.2
@@ -151,41 +138,188 @@ services:
       DB_PORT: "5432"
       POSTGRES_SEEDS: postgres-temporal
       POSTGRES_USER: temporal
-      POSTGRES_PWD: "${TEMPORAL_DB_PASSWORD:-temporal_prod_password}"
+      POSTGRES_PWD: "${TEMPORAL_DB_PASSWORD:?TEMPORAL_DB_PASSWORD is required}"
       TEMPORAL_ADDRESS: "temporal-server:7233"
       LOG_LEVEL: warn
     networks:
       - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal-server:7233", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 45s
+
+  # ---------------------------------------------------------------------------
+  # temporal-ui — Temporal Web UI (opcional, profile ui)
+  # ---------------------------------------------------------------------------
+  temporal-ui:
+    image: temporalio/ui:2.35.0
+    container_name: open-banca-temporal-ui
+    profiles: ["ui"]
+    restart: unless-stopped
+    depends_on:
+      temporal-server:
+        condition: service_started
+    environment:
+      TEMPORAL_ADDRESS: temporal-server:7233
+      TEMPORAL_CORS_ORIGINS: "${TEMPORAL_UI_CORS_ORIGINS:-http://localhost:8088}"
+      TEMPORAL_UI_PORT: "8088"
+    ports:
+      - "${TEMPORAL_UI_PORT:-8088}:8088"
+    networks:
+      - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     ulimits:
       core:
         soft: 0
         hard: 0
 
   # ---------------------------------------------------------------------------
-  # postgres-temporal
+  # api — FastAPI REST (build local, target: runtime)
+  # Puerto al host: OPEN_BANCA_API_PORT (default 8080).
+  # Único container en open-banca-public + open-banca-internal.
+  # Health endpoints: GET /healthz (liveness), GET /readyz (readiness).
   # ---------------------------------------------------------------------------
-  postgres-temporal:
-    image: postgres:16-alpine
-    container_name: open-banca-postgres-temporal
+  api:
+    build:
+      context: .
+      target: runtime
+    image: open-banca:latest
+    container_name: open-banca-api
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: temporal
-      POSTGRES_PASSWORD: "${TEMPORAL_DB_PASSWORD:-temporal_prod_password}"
-      POSTGRES_DB: temporal
+    command: ["uvicorn", "adapters.api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+    depends_on:
+      temporal-server:
+        condition: service_started
+      postgres-temporal:
+        condition: service_healthy
+    ports:
+      - "${OPEN_BANCA_API_PORT:-8080}:8080"
     volumes:
-      - pg-temporal:/var/lib/postgresql/data
+      - sqlite-data:/data
+      - maps-fs:/maps:ro
+      - job-artifacts:/artifacts:ro
+    environment:
+      # Security Critical Rule #6: passphrase ONLY via env, never in config file.
+      OPEN_BANCA_MASTER_PASSPHRASE: "${OPEN_BANCA_MASTER_PASSPHRASE:?OPEN_BANCA_MASTER_PASSPHRASE is required}"
+      WEBHOOK_HMAC_SECRET: "${WEBHOOK_HMAC_SECRET:?WEBHOOK_HMAC_SECRET is required}"
+      API_KEY: "${API_KEY:?API_KEY is required}"
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      LANGFUSE_ENABLED: "${LANGFUSE_ENABLED:-false}"
+      LANGFUSE_HOST: "${LANGFUSE_HOST:-http://langfuse:3000}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OPEN_BANCA_ENV: "${OPEN_BANCA_ENV:-production}"
+      DATA_DIR: /data
+      MAPS_DIR: /maps
+      ARTIFACTS_DIR: /artifacts
     networks:
+      - open-banca-public
       - open-banca-internal
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     ulimits:
       core:
         soft: 0
         hard: 0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # temporal-worker — registra activities/workflows, spawnea sandbox containers
+  # Misma imagen que api, entrypoint diferente (command override).
+  # NOTA: NO monta /var/run/docker.sock directamente (REQ-018).
+  # Resource limits ADR-0009 se aplican al SPAWN de cada sandbox, no aquí.
+  # ---------------------------------------------------------------------------
+  temporal-worker:
+    build:
+      context: .
+      target: runtime
+    image: open-banca:latest
+    container_name: open-banca-temporal-worker
+    restart: unless-stopped
+    command: ["python", "-m", "adapters.orchestrator.worker"]
+    depends_on:
+      temporal-server:
+        condition: service_started
+      docker-socket-proxy:
+        condition: service_healthy
+    volumes:
+      - maps-fs:/maps:ro
+      - job-artifacts:/artifacts
+      # NO bind mount de /var/run/docker.sock — REQ-018
+    environment:
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      TASK_QUEUE: "${TASK_QUEUE:-open-banca-main}"
+      WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-3}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      # DOCKER_HOST apunta al proxy — NO al socket del host (REQ-018)
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
+      SANDBOX_IMAGE: "${SANDBOX_IMAGE:-open-banca-sandbox:latest}"
+      OPEN_BANCA_ENV: "${OPEN_BANCA_ENV:-production}"
+      MAPS_DIR: /maps
+      ARTIFACTS_DIR: /artifacts
+    networks:
+      - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # sandbox-runner — imagen para containers efímeros por job
+  #
+  # Profile "build-only": solo se construye, NO se arranca con docker compose up.
+  # Uso: docker compose build sandbox-runner
+  #
+  # El temporal-worker spawnea instancias de esta imagen per-job con flags ADR-0009:
+  #   --cap-drop=ALL --read-only --no-new-privileges --ipc=none
+  #   --memory=2g --cpus=1.5 --pids-limit=256
+  #   --network=sandbox-<job_id> (aislada, egress allowlist por banco)
+  #   TTL hard: 6 min
+  # ---------------------------------------------------------------------------
+  sandbox-runner:
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile
+    image: open-banca-sandbox:latest
+    profiles: ["build-only"]
+    command: ["echo", "sandbox-runner is ephemeral — spawned per-job by temporal-worker (ADR-0009)"]
+    networks: []
 
   # ---------------------------------------------------------------------------
   # langfuse (opt-in — profile langfuse)
@@ -199,16 +333,30 @@ services:
       postgres-langfuse:
         condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse_prod}@postgres-langfuse:5432/langfuse"
-      NEXTAUTH_SECRET: "${LANGFUSE_NEXTAUTH_SECRET}"
-      SALT: "${LANGFUSE_SALT}"
+      # NOTE: LANGFUSE_DB_PASSWORD, LANGFUSE_NEXTAUTH_SECRET, LANGFUSE_SALT are required
+      # when using --profile langfuse. Set them in .env before starting with this profile.
+      DATABASE_URL: "postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-CHANGE_ME_langfuse_db_password}@postgres-langfuse:5432/langfuse"
+      NEXTAUTH_SECRET: "${LANGFUSE_NEXTAUTH_SECRET:-CHANGE_ME_nextauth_secret}"
+      SALT: "${LANGFUSE_SALT:-CHANGE_ME_salt}"
       NEXTAUTH_URL: "${LANGFUSE_URL:-http://localhost:3000}"
+      TELEMETRY_ENABLED: "false"
     networks:
       - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
     ulimits:
       core:
         soft: 0
         hard: 0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   postgres-langfuse:
     image: postgres:16-alpine
@@ -217,22 +365,27 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: langfuse
-      POSTGRES_PASSWORD: "${LANGFUSE_DB_PASSWORD:-langfuse_prod}"
+      POSTGRES_PASSWORD: "${LANGFUSE_DB_PASSWORD:-CHANGE_ME_langfuse_db_password}"
       POSTGRES_DB: langfuse
     volumes:
       - pg-langfuse:/var/lib/postgresql/data
     networks:
       - open-banca-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-    ulimits:
-      core:
-        soft: 0
-        hard: 0
 
 # =============================================================================
 # Networks
@@ -241,11 +394,15 @@ networks:
   open-banca-public:
     name: open-banca-pub
     driver: bridge
+    # Solo api está en esta red — único container con puerto al host
 
   open-banca-internal:
     name: open-banca-internal
     driver: bridge
-    internal: false  # worker necesita DNS externo para spawn de sandbox
+    internal: false
+    # internal=false intencional: temporal-worker necesita egress para pull de imágenes
+    # sandbox y llamadas a LLM APIs (anthropic.com, deepseek.com).
+    # El aislamiento de red se hace a nivel de los containers sandbox efímeros (ADR-0009).
 
 # =============================================================================
 # Volumes
@@ -253,12 +410,15 @@ networks:
 volumes:
   sqlite-data:
     name: open-banca-sqlite-data
+    # DB cifrada con sqlcipher — backup = snapshot del volumen (ya cifrado)
 
   maps-fs:
     name: open-banca-maps-fs
+    # Maps community firmados con cosign — montado :ro en api y worker
 
   job-artifacts:
     name: open-banca-job-artifacts
+    # Resultados de scrape jobs — read-only para api, write para worker/sandbox
 
   pg-temporal:
     name: open-banca-pg-temporal

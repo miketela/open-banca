@@ -12,6 +12,97 @@ API self-hosted, open source, para acceder a información financiera de bancos d
 
 Banco General (Panamá).
 
+## Quick start — self-hosted (≤30 min)
+
+### Requisitos de host
+
+- Docker Engine 24+ y Docker Compose v2
+- Python 3.12+ y [uv](https://docs.astral.sh/uv/)
+- Host Linux 64-bit (swap desactivado — ver [checklist M-1..M-7](./docs/05-operations/deployment.md))
+
+### 1. Clonar el repo
+
+```bash
+git clone https://github.com/open-banca/open-banca.git
+cd open-banca
+```
+
+### 2. Configurar variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+Editar `.env` y completar los valores marcados con `CHANGE_ME`:
+
+| Variable | Descripción | Generar con |
+|----------|-------------|-------------|
+| `OPEN_BANCA_MASTER_PASSPHRASE` | Cifrado AES-GCM de credenciales | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `WEBHOOK_HMAC_SECRET` | Firma HMAC-SHA256 de webhooks | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `API_KEY` | Autenticación de clientes API | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `TEMPORAL_DB_PASSWORD` | Password de PostgreSQL para Temporal | `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` |
+| `ANTHROPIC_API_KEY` | Claude Sonnet (Mapper/Remapper) | Consola Anthropic |
+
+### 3. Construir imágenes
+
+```bash
+# Imagen principal (api + worker — mismo target)
+docker compose build api
+
+# Imagen sandbox efímero (opcional, para correr scrapes reales)
+docker compose build sandbox-runner
+```
+
+### 4. Levantar el stack
+
+```bash
+# Stack base: api + temporal + worker + postgres
+docker compose up -d
+
+# Con Langfuse (trazas LLM):
+docker compose --profile langfuse up -d
+
+# Con Temporal UI (http://localhost:8088):
+docker compose --profile ui up -d
+```
+
+Verificar estado:
+
+```bash
+docker compose ps
+curl http://localhost:8080/healthz   # → 200 OK
+curl http://localhost:8080/readyz    # → 200 OK cuando worker conectado
+```
+
+### 5. Registrar primer banco
+
+```bash
+# Registrar credenciales de Banco General (interactivo)
+curl -X POST http://localhost:8080/banks \
+     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     -H "Content-Type: application/json" \
+     -d '{"bank_id": "banco_general"}'
+
+# Registrar credenciales bancarias
+curl -X POST http://localhost:8080/credentials \
+     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     -H "Content-Type: application/json" \
+     -d '{"bank_id": "banco_general", "username": "TU_USUARIO", "password": "TU_PASSWORD"}'
+```
+
+### 6. Primer scrape
+
+```bash
+curl -X POST http://localhost:8080/scrape \
+     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     -H "Content-Type: application/json" \
+     -d '{"bank_id": "banco_general"}'
+```
+
+Para detalles completos: [`docs/05-operations/deployment.md`](./docs/05-operations/deployment.md).
+
+---
+
 ## Lectura recomendada
 
 1. [`docs/00-overview.md`](./docs/00-overview.md) — visión, scope, no-goals.
