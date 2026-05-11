@@ -15,6 +15,7 @@ import typer
 from open_banca_cli.commands.list_credentials import list_credentials
 from open_banca_cli.commands.register_credentials import register_credentials
 from open_banca_cli.commands.rotate_master import rotate_master
+from open_banca_cli.commands.run_mapper import run_mapper
 
 app = typer.Typer(
     name="open-banca",
@@ -26,3 +27,4 @@ app = typer.Typer(
 app.command("register-credentials")(register_credentials)
 app.command("list-credentials")(list_credentials)
 app.command("rotate-master")(rotate_master)
+app.command("run-mapper")(run_mapper)

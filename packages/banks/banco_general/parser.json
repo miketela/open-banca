@@ -1,0 +1,247 @@
+{
+  "version": "0.0.1-stub",
+  "bank": "banco_general",
+  "defaults": {
+    "date_format": "%d/%m/%Y",
+    "decimal_separator": ".",
+    "thousands_separator": ",",
+    "currency": "PAB",
+    "locale": "en_US"
+  },
+  "sheets": [
+    {
+      "name_pattern": ".*[Aa]horro.*|.*[Ss]aving.*|Sheet1",
+      "header_row": 1,
+      "data_start_row": 2,
+      "data_end_marker": "empty_row",
+      "account_metadata_extraction": {
+        "B1": "account_number",
+        "B2": "account_name"
+      },
+      "column_map": [
+        {
+          "target_field": "date",
+          "source": "Fecha",
+          "required": true,
+          "on_missing": "fail",
+          "transformations": [
+            {"helper": "parse_date", "format": "%d/%m/%Y"}
+          ]
+        },
+        {
+          "target_field": "description",
+          "source": "Descripcion",
+          "required": true,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        },
+        {
+          "target_field": "amount_debit",
+          "source": "Debito",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "amount_credit",
+          "source": "Credito",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "balance",
+          "source": "Saldo",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "reference",
+          "source": "Referencia",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        }
+      ],
+      "account_type_inference": {
+        "savings_columns": ["Debito", "Credito", "Saldo"],
+        "checking_columns": [],
+        "credit_card_columns": [],
+        "default": "savings"
+      },
+      "id_strategy": {
+        "strategy": "fingerprint",
+        "fingerprint_fields": ["date", "description", "amount_debit", "amount_credit"]
+      }
+    },
+    {
+      "name_pattern": ".*[Cc]orriente.*|.*[Cc]hecking.*|Sheet2",
+      "header_row": 1,
+      "data_start_row": 2,
+      "data_end_marker": "empty_row",
+      "account_metadata_extraction": {
+        "B1": "account_number",
+        "B2": "account_name"
+      },
+      "column_map": [
+        {
+          "target_field": "date",
+          "source": "Fecha",
+          "required": true,
+          "on_missing": "fail",
+          "transformations": [
+            {"helper": "parse_date", "format": "%d/%m/%Y"}
+          ]
+        },
+        {
+          "target_field": "description",
+          "source": "Descripcion",
+          "required": true,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        },
+        {
+          "target_field": "amount_debit",
+          "source": "Debito",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "amount_credit",
+          "source": "Credito",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "balance",
+          "source": "Saldo",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "reference",
+          "source": "Referencia",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        }
+      ],
+      "account_type_inference": {
+        "savings_columns": [],
+        "checking_columns": ["Debito", "Credito", "Saldo"],
+        "credit_card_columns": [],
+        "default": "checking"
+      },
+      "id_strategy": {
+        "strategy": "fingerprint",
+        "fingerprint_fields": ["date", "description", "amount_debit", "amount_credit"]
+      }
+    },
+    {
+      "name_pattern": ".*[Tt]arjeta.*|.*[Cc]redit.*|Sheet3",
+      "header_row": 1,
+      "data_start_row": 2,
+      "data_end_marker": "empty_row",
+      "account_metadata_extraction": {
+        "B1": "account_number",
+        "B2": "account_name"
+      },
+      "column_map": [
+        {
+          "target_field": "date",
+          "source": "Fecha",
+          "required": true,
+          "on_missing": "fail",
+          "transformations": [
+            {"helper": "parse_date", "format": "%d/%m/%Y"}
+          ]
+        },
+        {
+          "target_field": "description",
+          "source": "Descripcion",
+          "required": true,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        },
+        {
+          "target_field": "amount_debit",
+          "source": "Cargo",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "amount_credit",
+          "source": "Abono",
+          "required": false,
+          "on_missing": "default",
+          "default_value": "0",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "balance",
+          "source": "Saldo",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "normalize_amount", "locale": "en_US"}
+          ]
+        },
+        {
+          "target_field": "reference",
+          "source": "Autorizacion",
+          "required": false,
+          "on_missing": "null",
+          "transformations": [
+            {"helper": "trim"}
+          ]
+        }
+      ],
+      "account_type_inference": {
+        "savings_columns": [],
+        "checking_columns": [],
+        "credit_card_columns": ["Cargo", "Abono"],
+        "default": "credit_card"
+      },
+      "id_strategy": {
+        "strategy": "fingerprint",
+        "fingerprint_fields": ["date", "description", "amount_debit", "amount_credit"]
+      }
+    }
+  ]
+}
