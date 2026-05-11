@@ -39,6 +39,28 @@ from open_banca_llm.mapper.pii_filter_adapter import PIIRedactingChatModel, PiiR
 from open_banca_llm.mapper.prompts import SYSTEM_PROMPT, build_task_prompt
 from open_banca_observability.redact import RedactConfig
 
+
+def _build_cost_counter() -> Any | None:
+    """Return the ``llm_cost_usd_total`` OTel counter when OTel is enabled.
+
+    Returns ``None`` (no-op) when ``OPEN_BANCA_OTEL_ENABLED`` is not set or
+    when the OTel package is unavailable so the mapper never crashes due to
+    observability infrastructure failures.
+    """
+    import os  # type: ignore[import-untyped]
+
+    if os.environ.get("OPEN_BANCA_OTEL_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        return None
+    try:
+        from open_banca_observability.metrics import (  # type: ignore[import-untyped]
+            get_instruments,
+            setup_meter,
+        )
+
+        return get_instruments(setup_meter("llm")).llm_cost_usd_total
+    except Exception:  # type: ignore[broad-except]
+        return None  # OTel setup failure must not crash the mapper
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -66,9 +88,27 @@ class CostTrackingChatModel:
     # Required by BaseChatModel Protocol
     _verified_api_keys: bool = False
 
-    def __init__(self, inner: Any, tracker: CostTracker) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        tracker: CostTracker,
+        cost_counter: Any | None = None,
+        agent_name: str = "mapper",
+    ) -> None:
+        """Create a CostTrackingChatModel.
+
+        Args:
+            inner: Wrapped BaseChatModel (e.g. PIIRedactingChatModel).
+            tracker: CostTracker for cap enforcement.
+            cost_counter: Optional OTel Counter for ``llm_cost_usd_total``.
+                          When provided, emits a measurement on every LLM call.
+                          Pass ``None`` (default) to disable metric emission.
+            agent_name: Label used in the ``agent`` attribute of the metric.
+        """
         self._inner: Any = inner
         self._tracker = tracker
+        self._cost_counter: Any | None = cost_counter
+        self._agent_name = agent_name
 
     @property
     def model(self) -> str:
@@ -119,6 +159,11 @@ class CostTrackingChatModel:
                 output_tokens=result.usage.completion_tokens,
                 cost_usd=cost_usd,
             )
+            # Emit OTel metric when a counter has been injected (task #27).
+            # Use cost_usd when available; fall back to tracker's estimate.
+            if self._cost_counter is not None:
+                emit_cost = cost_usd if cost_usd is not None else self._tracker.usage.cost_usd
+                self._cost_counter.add(emit_cost, {"agent": self._agent_name})
 
         return result
 
@@ -269,7 +314,11 @@ class MapperAgent:
         self._start_url_map = start_url_map or {}
 
     def _build_llm(self, tracker: CostTracker) -> CostTrackingChatModel:
-        """Build the wrapped LLM chain: ChatLiteLLM → PIIRedact → CostTracking."""
+        """Build the wrapped LLM chain: ChatLiteLLM → PIIRedact → CostTracking.
+
+        When ``OPEN_BANCA_OTEL_ENABLED`` is set, injects an OTel counter so
+        each LLM call emits to the ``llm_cost_usd_total`` metric (task #27).
+        """
         if self._llm_override is not None:
             inner: Any = self._llm_override
         else:
@@ -282,7 +331,13 @@ class MapperAgent:
             redact_config=self._redact_config,
             pii_regions=self._pii_regions,
         )
-        return CostTrackingChatModel(inner=pii_wrapped, tracker=tracker)
+
+        return CostTrackingChatModel(
+            inner=pii_wrapped,
+            tracker=tracker,
+            cost_counter=_build_cost_counter(),
+            agent_name="mapper",
+        )
 
     def _bank_start_url(self, bank_id: str) -> str:
         if bank_id in self._start_url_map:

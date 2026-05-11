@@ -15,6 +15,7 @@ dependencies = [
     "open-banca-application",
     "open-banca-storage",
     "open-banca-orchestrator",
+    "open-banca-observability",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +38,4 @@ open-banca-domain = { workspace = true }
 open-banca-application = { workspace = true }
 open-banca-storage = { workspace = true }
 open-banca-orchestrator = { workspace = true }
+open-banca-observability = { workspace = true }
