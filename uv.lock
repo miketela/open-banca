@@ -16,6 +16,7 @@ members = [
     "open-banca-browser",
     "open-banca-cli",
     "open-banca-domain",
+    "open-banca-guardrails",
     "open-banca-llm",
     "open-banca-observability",
     "open-banca-orchestrator",
@@ -269,7 +270,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.12.6"
-source = { editable = "../browser-use" }
+source = { editable = "../../../../browser-use" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -2058,6 +2059,25 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
+name = "open-banca-guardrails"
+version = "0.1.0"
+source = { editable = "packages/adapters/guardrails" }
+dependencies = [
+    { name = "open-banca-domain" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "temporalio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "open-banca-domain", editable = "packages/domain" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pydantic-settings", specifier = ">=2.3" },
+    { name = "temporalio", specifier = ">=1.7" },
+]
+
+[[package]]
 name = "open-banca-llm"
 version = "0.1.0"
 source = { editable = "packages/adapters/llm" }
@@ -2079,7 +2099,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "browser-use", editable = "../browser-use" },
+    { name = "browser-use", editable = "../../../../browser-use" },
     { name = "litellm", specifier = ">=1.50" },
     { name = "open-banca-browser", editable = "packages/adapters/browser" },
     { name = "open-banca-domain", editable = "packages/domain" },
