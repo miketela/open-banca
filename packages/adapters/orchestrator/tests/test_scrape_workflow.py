@@ -64,7 +64,7 @@ _FAKE_DOWNLOAD = DownloadExcelResult(
 )
 _FAKE_PARSE = ParseExcelResult(transactions=[], row_count=0)
 _FAKE_VALIDATE = ValidateResult(status=ValidationStatus.ok, validated_count=0)
-_FAKE_EMIT = EmitWebhookResult(enqueued=True, http_status=200)
+_FAKE_EMIT = EmitWebhookResult(enqueued=True, event_id="evt-fake-001", http_status=200)
 _FAKE_OTP_KEEPALIVE = OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=5)
 
 
