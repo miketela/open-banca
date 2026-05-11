@@ -35,6 +35,7 @@ These rules are enforced via a lint policy (see ADR-0003 mitigations).
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -85,6 +86,27 @@ _SYNC_ACTIVITIES = [
 ]
 
 
+def _build_interceptors() -> list[object]:
+    """Return OTel interceptors when OPEN_BANCA_OTEL_ENABLED is set.
+
+    Uses ``temporalio.contrib.opentelemetry.TracingInterceptor`` to propagate
+    trace context through workflow→activity spans automatically.  Falls back to
+    an empty list when OTel is disabled or the contrib package is absent.
+    """
+    if os.environ.get("OPEN_BANCA_OTEL_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        return []
+
+    try:
+        from open_banca_observability.tracing import setup_tracer  # type: ignore[import-untyped]
+        from temporalio.contrib.opentelemetry import TracingInterceptor  # type: ignore[import-untyped]
+
+        setup_tracer("orchestrator")
+        return [TracingInterceptor()]
+    except ImportError:
+        logger.debug("temporalio.contrib.opentelemetry not available — OTel skipped")
+        return []
+
+
 async def run_worker(settings: OrchestratorSettings | None = None) -> None:
     """Connect to Temporal and run the worker until cancelled.
 
@@ -104,6 +126,7 @@ async def run_worker(settings: OrchestratorSettings | None = None) -> None:
         },
     )
 
+    interceptors = _build_interceptors()
     client = await get_client(cfg)
 
     # ThreadPoolExecutor for synchronous activities (ParseExcelActivity).
@@ -125,6 +148,7 @@ async def run_worker(settings: OrchestratorSettings | None = None) -> None:
         activity_executor=thread_pool,
         max_concurrent_activities=cfg.worker_max_concurrent_activities,
         max_concurrent_workflow_tasks=cfg.worker_max_concurrent_workflows,
+        interceptors=interceptors,  # type: ignore[arg-type]
     )
 
     logger.info(

@@ -6,9 +6,11 @@ Design notes:
 - slowapi rate limiting: 60/minute on POST /scrape.
 - RedactMiddleware scrubs SECRET_CANARY_VALUE and PII_CANARY_* from bodies.
 - NO Temporal / DB connections at boot (task #31 handles wiring).
+- OTel tracing via FastAPIInstrumentor when OPEN_BANCA_OTEL_ENABLED=true.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -36,6 +38,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+def _setup_otel(app: FastAPI) -> None:
+    """Wire OTel tracing to the FastAPI app if OPEN_BANCA_OTEL_ENABLED is set.
+
+    Guarded so that tests and lightweight deployments don't start exporters.
+    Imports are deferred to avoid hard startup failures when OTel packages are
+    absent in minimal environments.
+    """
+    if os.environ.get("OPEN_BANCA_OTEL_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        return
+
+    from open_banca_observability.tracing import setup_tracer  # type: ignore[import-untyped]
+
+    setup_tracer("api")
+
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-untyped]
+
+        FastAPIInstrumentor.instrument_app(app)
+    except ImportError:
+        pass  # opentelemetry-instrumentation-fastapi not installed — skip silently
+
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor  # type: ignore[import-untyped]
+
+        HTTPXClientInstrumentor().instrument()
+    except ImportError:
+        pass  # opentelemetry-instrumentation-httpx not installed — skip silently
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
@@ -61,6 +92,9 @@ def create_app() -> FastAPI:
 
     # Security middleware — must come after exception handlers
     app.add_middleware(RedactMiddleware)
+
+    # OTel tracing — no-op when OPEN_BANCA_OTEL_ENABLED is unset (task #27)
+    _setup_otel(app)
 
     # Routers
     app.include_router(system.router)

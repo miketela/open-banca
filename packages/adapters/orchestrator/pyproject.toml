@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2",
     "open-banca-domain",
     "open-banca-webhooks",
+    "open-banca-observability",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +29,7 @@ packages = ["src/open_banca_orchestrator"]
 [tool.uv.sources]
 open-banca-domain = { workspace = true }
 open-banca-webhooks = { workspace = true }
+open-banca-observability = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
