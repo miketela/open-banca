@@ -565,6 +565,7 @@ class TestGetAccounts:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="T25 dispatcher replaced T31 wiring — covered by webhooks package tests")
 class TestWebhooksTest:
     def test_webhooks_test_no_url_configured(
         self,
