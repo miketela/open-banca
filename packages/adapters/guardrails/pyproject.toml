@@ -1,0 +1,34 @@
+[project]
+name = "open-banca-guardrails"
+version = "0.1.0"
+description = "Central cost guardrails: budget enforcement, rate limits, and circuit breaker"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0" }
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "open-banca-domain",
+    "temporalio>=1.7",
+]
+
+[tool.uv.sources]
+open-banca-domain = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_banca_guardrails"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "PL", "ANN"]
+ignore = ["PLR2004", "PLR0912", "PLR0915", "ANN401"]
+per-file-ignores = { "**/tests/**" = ["ANN", "S101", "B017"] }
