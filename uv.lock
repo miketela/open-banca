@@ -279,7 +279,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.12.6"
-source = { editable = "../../../../browser-use" }
+source = { editable = "../browser-use" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -2170,7 +2170,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "browser-use", editable = "../../../../browser-use" },
+    { name = "browser-use", editable = "../browser-use" },
     { name = "litellm", specifier = ">=1.50" },
     { name = "open-banca-browser", editable = "packages/adapters/browser" },
     { name = "open-banca-domain", editable = "packages/domain" },
