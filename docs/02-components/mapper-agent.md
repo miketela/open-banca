@@ -114,6 +114,65 @@ Una vez que el agente completa el login, el banco renderiza en el DOM y en los s
 
 Ver [ADR-0020 — PII redact at LLM boundary](../adr/0020-pii-redact-llm-boundary.md) y amenaza **T18** en el threat model.
 
+## Security question detection (ADR-0021)
+
+Algunos bancos (incl. Banco General) intercalan **preguntas de seguridad rotantes** entre user/pass y Clave Móvil. El Mapper debe detectarlas y emitir el step type correcto.
+
+### Detección heurística
+
+Durante la exploración del `auth_flow`, el agente clasifica una pantalla como "security question" si concurren:
+
+- Un input visible no marcado `type=password` y no marcado `type=submit`.
+- Un `<label>` o nodo de texto cercano cuyo contenido matchea heurísticamente `(pregunta|seguridad|verificar|confirme|¿)` (case-insensitive, español).
+- No hay placeholder/etiqueta indicativa de username/email.
+- El paso siguiente del flow no es el dashboard (la sesión aún no está autenticada).
+
+En cuanto detecta, el Mapper **emite un step `prompt_user`** (en lugar de `fill` con `value_ref`) con:
+
+- `selector`: el input.
+- `question_selector`: el nodo del texto de la pregunta (preferir nodos con `id`/`data-` antes que `nth-child`).
+- `field_key`: identificador semántico generado por el agente con prompt directo al operador en CLI (e.g. `security_q_mother_color`). Default si CLI no disponible: `security_q_{step_index}`.
+- `cache_answers`: `true`.
+- `timeout_s`: `240`.
+
+### Pre-load via Mapper CLI (one-shot supervisado)
+
+Cuando el Mapper corre **bajo supervisión humana** (modo CLI, no autónomo), tras detectar un step `prompt_user` el flujo cambia: **antes** de continuar el mapping, el CLI prompta al operador en terminal:
+
+```
+[Mapper] Detectada pregunta de seguridad:
+   field_key sugerido: security_q_mother_color
+   pregunta: "¿Color favorito de su madre?"
+   ¿Quieres pre-cargar la respuesta al vault ahora? (Y/n)
+   answer (oculta): ****
+   ¿Confirmar field_key 'security_q_mother_color'? (Y/n / editar)
+```
+
+Si el operador acepta, el CLI escribe la entrada `(bank_id, credential_ref, field_key, normalize(question_text), answer)` directamente al vault namespace `security_q` con TTL configurable. El primer scrape autónomo encontrará cache hit y no disparará webhook.
+
+**Distinción crítica vs runtime prompt:**
+
+| Dimensión | Mapper CLI prompt (pre-load) | Runtime prompt (`HumanInputAwaitActivity`) |
+|---|---|---|
+| Cuándo | Onboarding del banco, supervisado | Cada scrape job en producción |
+| Canal | Terminal del operador | Webhook + `POST /jobs/{id}/human-input` |
+| Lifecycle | One-shot pre-deploy | Per-job, on-demand |
+| Vault write | Directo (CLI tiene master passphrase) | Vía signal con `persist=true` |
+| Visibilidad | Operador ve respuesta antes de escribirla | Respuesta llega cifrada vía HTTPS al endpoint |
+
+### Mapper autónomo (sin CLI)
+
+Si el Mapper corre sin supervisión (e.g. CI re-mapping post-amendment), **no prompta**. Solo emite el step `prompt_user` con `field_key` generado heurísticamente. Las respuestas se proveerán runtime via webhook+POST. El operador puede pre-cargar el vault después con un comando explícito si lo desea.
+
+### Validación
+
+El step `prompt_user` emitido por el Mapper pasa por:
+- JSON Schema strict (whitelist de step types).
+- Linter L15 (community-maps): `question_selector` non-null, `field_key` valida regex, `selector` non-null.
+- Diff vs map previo (si remap): si el `field_key` cambia para una pregunta léxicamente igual, Judge eleva confidence-down (potencial drift de identificador).
+
+Ver [ADR-0021](../adr/0021-human-input-step-type.md).
+
 ## Límites operativos
 
 | Cap | Valor por defecto | Razón |
