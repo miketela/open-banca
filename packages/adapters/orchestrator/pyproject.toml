@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2",
     "pydantic-settings>=2",
     "open-banca-domain",
+    "open-banca-llm",
     "open-banca-webhooks",
     "open-banca-observability",
 ]
@@ -28,16 +29,9 @@ packages = ["src/open_banca_orchestrator"]
 
 [tool.uv.sources]
 open-banca-domain = { workspace = true }
+open-banca-llm = { workspace = true }
 open-banca-webhooks = { workspace = true }
 open-banca-observability = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-
-[tool.ruff]
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "C4", "PL"]
-ignore = ["PLR2004", "PLR0912", "PLR0915"]

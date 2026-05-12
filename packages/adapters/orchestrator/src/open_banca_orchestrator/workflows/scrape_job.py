@@ -39,6 +39,7 @@ with workflow.unsafe.imports_passed_through():
         WebhookEventType,
         emit_webhook,
     )
+    from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
     from open_banca_orchestrator.activities.login import (
         LoginInput,
         LoginResult,
@@ -56,7 +57,7 @@ with workflow.unsafe.imports_passed_through():
         TransactionRecord,
         parse_excel,
     )
-    from open_banca_orchestrator.activities.validate import ValidateInput, validate
+    from open_banca_orchestrator.activities.validate import ValidateInput, ValidateResult, validate
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +103,8 @@ _RETRY_WEBHOOK = RetryPolicy(
 )
 
 _RETRY_NONE = RetryPolicy(maximum_attempts=1)  # MapperAgent, RemapperAgent
+
+_RETRY_JUDGE = RetryPolicy(maximum_attempts=1)  # Judge: idempotent on breakage hash
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +243,7 @@ class ScrapeJobWorkflow:
     # -----------------------------------------------------------------------
 
     @workflow.run
-    async def run(self, input: ScrapeJobInput) -> ScrapeJobResult:  # noqa: A002
+    async def run(self, input: ScrapeJobInput) -> ScrapeJobResult:  # noqa: A002, PLR0911
         """Orchestrate the full scraping pipeline.
 
         Sequential steps per orchestrator.md §Topología:
@@ -483,7 +486,7 @@ class ScrapeJobWorkflow:
             str([t.model_dump() for t in all_transactions]).encode()
         ).hexdigest()
 
-        await workflow.execute_activity(
+        validate_result: ValidateResult = await workflow.execute_activity(
             validate,
             ValidateInput(
                 job_id=input.job_id,
@@ -494,6 +497,72 @@ class ScrapeJobWorkflow:
             start_to_close_timeout=datetime.timedelta(seconds=60),
             retry_policy=_RETRY_VALIDATE,
         )
+
+        # ------------------------------------------------------------------
+        # Step 8b: JudgeActivity — triggered when validation detects breakage
+        # v1 routing (ADR-0013 amendment): ALWAYS human_required.
+        # Emit job.remap_proposed webhook then wait for remap_approved signal.
+        # ------------------------------------------------------------------
+        if validate_result.breakage_detected:
+            breakage_hash = hashlib.sha256(
+                str(validate_result.issues).encode()
+            ).hexdigest()
+
+            # Build a synthetic BreakageEvent from validation failures
+            from open_banca_domain.entities.breakage_event import (  # noqa: PLC0415
+                BreakageEvent as DomainBreakageEvent,
+            )
+
+            breakage_event = DomainBreakageEvent(
+                job_id=input.job_id,
+                step_index=-1,  # validation step (post-parse)
+                step_type="validate",
+                error_class="validation_failure",
+                screenshot_ref="sha256:none",
+                dom_excerpt=str(validate_result.issues)[:10240],
+                occurred_at=workflow.now(),
+            )
+
+            judge_result: JudgeResult = await workflow.execute_activity(
+                judge,
+                JudgeInput(
+                    job_id=input.job_id,
+                    breakage_event=breakage_event,
+                    breakage_hash=breakage_hash,
+                ),
+                start_to_close_timeout=datetime.timedelta(seconds=30),
+                retry_policy=_RETRY_JUDGE,
+            )
+
+            # v1: route is always human_required — emit webhook and wait for approval
+            # (In v2, auto-apply path would branch here on route/confidence/risk.)
+            await workflow.execute_activity(
+                emit_webhook,
+                EmitWebhookInput(
+                    event=WebhookEvent(
+                        event_id=workflow.uuid4().hex,
+                        event_type=WebhookEventType.remap_proposed,
+                        job_id=input.job_id,
+                        timestamp=workflow.now().isoformat(),
+                        payload={
+                            "route": judge_result.route,
+                            "confidence": judge_result.confidence,
+                            "risk": judge_result.risk,
+                            "rationale": judge_result.rationale,
+                        },
+                    )
+                ),
+                start_to_close_timeout=datetime.timedelta(seconds=10),
+                retry_policy=_RETRY_WEBHOOK,
+            )
+
+            # Wait for operator remap_approved signal (no hard timeout — operator-driven)
+            await workflow.wait_condition(
+                lambda: self._remap_approved_proposal_id is not None or self._cancelled,
+            )
+
+            if self._cancelled:
+                return await self._do_cancel(input.job_id)
 
         # ------------------------------------------------------------------
         # Step 9: TODO(task-storage) — persist job/accounts/transactions

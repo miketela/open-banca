@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from open_banca_domain.entities.breakage_event import BreakageEvent
 from temporalio.testing import ActivityEnvironment
 
 from open_banca_orchestrator.activities.download_excel import (
@@ -25,7 +26,7 @@ from open_banca_orchestrator.activities.emit_webhook import (
     WebhookEventType,
     emit_webhook,
 )
-from open_banca_orchestrator.activities.judge import BreakageEvent, JudgeInput, judge
+from open_banca_orchestrator.activities.judge import JudgeInput
 from open_banca_orchestrator.activities.login import (
     BrowserSessionToken,
     LoginInput,
@@ -179,38 +180,53 @@ def test_parse_excel_raises_not_implemented() -> None:
 
 
 @pytest.mark.asyncio
-async def test_validate_raises_not_implemented(env: ActivityEnvironment) -> None:
-    """ValidateActivity PLACEHOLDER raises NotImplementedError."""
+async def test_validate_activity_empty_transactions(env: ActivityEnvironment) -> None:
+    """ValidateActivity with empty transactions: heuristic path returns fail.
+
+    Empty transaction set is a hard heuristic failure — no LLM required.
+    This test does NOT import pydantic_ai to preserve Temporal sandbox isolation.
+    """
+    from open_banca_orchestrator.activities.validate import ValidationStatus  # noqa: PLC0415
+
     input_ = ValidateInput(
         job_id="job-001",
         account_id="acc-001",
         transactions=[],
         payload_hash="deadbeef",
     )
-    with pytest.raises(NotImplementedError):
-        await env.run(validate, input_)
+    result = await env.run(validate, input_)
+    assert result.status == ValidationStatus.failed
+    assert result.breakage_detected is True
 
 
 # ---------------------------------------------------------------------------
 # JudgeActivity
+# NOTE: JudgeActivity always invokes LLM (no heuristic path).
+#       Full tests with LLM mocking are in test_validate_judge_activities.py
+#       which runs alphabetically after the Temporal sandbox tests to avoid
+#       beartype import hook interference.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_judge_raises_not_implemented(env: ActivityEnvironment) -> None:
-    """JudgeActivity PLACEHOLDER raises NotImplementedError."""
+def test_judge_input_validates() -> None:
+    """JudgeInput schema validates correctly with domain BreakageEvent."""
+    import datetime  # noqa: PLC0415
+
     input_ = JudgeInput(
         job_id="job-001",
         breakage_event=BreakageEvent(
             job_id="job-001",
-            bank_id="banco_general",
-            account_id="acc-001",
-            breakage_type="layout_changed",
+            step_index=0,
+            step_type="navigate",
+            error_class="layout_changed",
+            screenshot_ref="sha256:abc",
+            dom_excerpt="<div>broken layout</div>",
+            occurred_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
         ),
         breakage_hash="deadbeef",
     )
-    with pytest.raises(NotImplementedError):
-        await env.run(judge, input_)
+    assert input_.job_id == "job-001"
+    assert input_.breakage_event.error_class == "layout_changed"
 
 
 # ---------------------------------------------------------------------------
