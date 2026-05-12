@@ -16,6 +16,7 @@ flowchart TD
     %% Activities del Scraper runner
     Root --> Login[LoginActivity]:::act
     Root --> OTPWait[OTPSignalAwaitActivity]:::act
+    Root --> HIWait[HumanInputAwaitActivity]:::act
     Root --> Nav[NavigateActivity]:::act
     Root --> DL[DownloadExcelActivity]:::act
     Root --> Parse[ParseExcelActivity]:::act
@@ -30,6 +31,7 @@ flowchart TD
 
     %% Signals externos entran al workflow raíz
     SigOTP((signal: otp_confirmed)):::sig --> Root
+    SigHI((signal: human_input_provided)):::sig --> Root
     SigApprove((signal: remap_approved)):::sig --> Root
     SigCancel((signal: cancel_job)):::sig --> Root
 
@@ -47,6 +49,7 @@ flowchart TD
 | `RemapBankWorkflow` | child workflow | `bank_id + breakage_hash` | 1 intento (los siguientes pasan por Judge) | 20 min | N/A |
 | `LoginActivity` | activity | hash de creds + nonce | exp backoff, 2 intentos máx | start-to-close 90 s | cada 10 s mientras espera login |
 | `OTPSignalAwaitActivity` | activity (long-running) | `job_id` | sin retry | start-to-close 4 min (hard cap) | cada 15 s manteniendo browser context |
+| `HumanInputAwaitActivity` | activity (long-running) | `job_id + field_key` | sin retry | start-to-close = `timeout_s` del step (default 240 s) | cada 15 s manteniendo browser context vía Sidecar |
 | `NavigateActivity` | activity | `job_id + step_id` | exp backoff, 3 intentos | 30 s por step | cada 5 s en steps largos |
 | `DownloadExcelActivity` | activity | `job_id + account_id + period` | exp backoff, 3 intentos | 2 min | cada 10 s durante descarga |
 | `ParseExcelActivity` | activity (sync, threadpool) | hash del archivo | 1 intento (parser determinístico) | 60 s | N/A |
@@ -60,9 +63,10 @@ Idempotency notes: cada activity recibe el `job_id` y un `step_id` lógico; el l
 
 ## Signals: input asincrónico sin romper determinismo
 
-`ScrapeJobWorkflow` declara handlers para tres signals externos. Llegan vía `Temporal Client` desde la API y el workflow los espera con primitivas determinísticas (no `time.sleep`, no I/O directo):
+`ScrapeJobWorkflow` declara handlers para cuatro signals externos. Llegan vía `Temporal Client` desde la API y el workflow los espera con primitivas determinísticas (no `time.sleep`, no I/O directo):
 
-- `otp_confirmed` — disparado por `POST /jobs/{id}/otp-confirmed`. Desbloquea `OTPSignalAwaitActivity`.
+- `otp_confirmed` — disparado por `POST /jobs/{id}/otp-confirmed`. Desbloquea `OTPSignalAwaitActivity`. Payload vacío.
+- `human_input_provided` — disparado por `POST /jobs/{id}/human-input`. Desbloquea `HumanInputAwaitActivity`. **Payload obligatorio**: `{ field_key: str, answer: str, persist: bool }`. El `field_key` permite correlación cuando un workflow tiene múltiples `prompt_user` steps (e.g. dos preguntas de seguridad consecutivas); la activity solo consume signals cuyo `field_key` matchea el prompt actual. Ver [ADR-0021](../adr/0021-human-input-step-type.md).
 - `remap_approved` — disparado por `POST /maps/{bank}/proposals/{id}/approve`. Reanuda el job pausado tras `job.remap_proposed`.
 - `cancel_job` — disparado por `POST /jobs/{id}/cancel`. Workflow ejecuta cleanup (cerrar browser, marcar job como `cancelled`).
 
@@ -77,6 +81,9 @@ stateDiagram-v2
     running --> otp_required: login alcanza paso Clave Móvil
     otp_required --> resumed: signal otp_confirmed recibida
     otp_required --> failed: timeout 4 min sin signal
+    running --> human_input_required: runner alcanza step prompt_user con cache miss
+    human_input_required --> resumed: signal human_input_provided + banco acepta
+    human_input_required --> failed: timeout_s sin signal, browser_lost, o respuesta rechazada
     resumed --> running: continúa download + parse
     running --> escalated: Judge emite human_required o remap_proposed sin auto-approve
     escalated --> running: signal remap_approved + retry
@@ -113,4 +120,6 @@ Mientras el job vive en `otp_required`, `OTPSignalAwaitActivity` envía heartbea
 
 - Flujos end-to-end: [`03-flows/full-historical-scrape.md`](../03-flows/full-historical-scrape.md), [`03-flows/incremental-scrape.md`](../03-flows/incremental-scrape.md)
 - OTP detalle: [`03-flows/otp-pause-resume.md`](../03-flows/otp-pause-resume.md)
+- Human input detalle: [`03-flows/human-input-pause-resume.md`](../03-flows/human-input-pause-resume.md)
 - Decisión arquitectural: [`adr/0003-temporal-orchestration.md`](../adr/0003-temporal-orchestration.md)
+- ADR human input step: [`adr/0021-human-input-step-type.md`](../adr/0021-human-input-step-type.md)

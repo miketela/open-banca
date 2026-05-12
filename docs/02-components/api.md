@@ -31,6 +31,7 @@ sequenceDiagram
 | GET | `/jobs/{id}` | Estado actual y metadata del job |
 | GET | `/jobs/{id}/result` | Datos normalizados (cuentas + transacciones) |
 | POST | `/jobs/{id}/otp-confirmed` | Confirma que el cliente aceptó el push de Clave Móvil |
+| POST | `/jobs/{id}/human-input` | Entrega respuesta del operador a un step `prompt_user` (pregunta de seguridad, captcha texto) — ADR-0021 |
 | POST | `/jobs/{id}/cancel` | Cancela job en cualquier fase |
 | POST | `/maps/{bank}/proposals/{id}/approve` | Aprueba patch de map propuesto |
 | POST | `/maps/{bank}/proposals/{id}/reject` | Rechaza patch de map propuesto |
@@ -61,6 +62,27 @@ sequenceDiagram
 - **Response 204**: signal entregado a workflow.
 - **Webhooks**: ninguno propio; el job continúa y dispara `job.progress` siguientes.
 - **Errores**: `404` job, `409` job no está en `otp_required`, `410` ya expiró el hard cap de 4 min.
+
+### POST `/jobs/{id}/human-input`
+
+Resuelve un step `prompt_user` pendiente (ADR-0021). Análogo a `/otp-confirmed` pero carga **valor textual de retorno**.
+
+- **Request**: `{ field_key: str (required), answer: str (required), persist: bool = true }`.
+- **Validación**:
+  - `field_key` matchea regex `^[a-z][a-z0-9_]{2,32}$`. Mismatch → `400 validation_error`.
+  - `answer` length ≤ **256 bytes UTF-8**. Mismatch → `400 validation_error`.
+  - `answer` whitelist: Unicode categories L (letras), N (números), P (puntuación), Z (separators básicos), Sm/Sc/So (símbolos comunes). Rechaza categoría Cc (control) y format chars (Cf), incl. embed direction marks. Mismatch → `400 validation_error`.
+  - Rate limit: max 3 intentos por `(job_id, field_key)` durante una ventana de wait. Cuarto intento → `429 too_many_attempts`.
+- **Response 204**: signal entregado a workflow.
+- **Webhooks**: ninguno propio; el job continúa y dispara `job.progress` / `job.completed` / `job.failed` según outcome del step posterior.
+- **Errores**:
+  - `400 validation_error` — `field_key`, length, o charset inválidos.
+  - `404 not_found` — job no existe.
+  - `409 conflict` — job no está en `human_input_required`, **o** `field_key` no matchea el prompt actual (el body de error incluye `expected_field_key`).
+  - `410 gone` — wait expiró (`human_input_expired`).
+  - `429 too_many_attempts` — más de 3 intentos en la misma ventana.
+
+**Audit log**: la operación registra `(job_id, field_key, attempt_n, sha256(answer)[0:8], persist)`. La respuesta plaintext **nunca** se loguea.
 
 ### POST `/jobs/{id}/cancel`
 

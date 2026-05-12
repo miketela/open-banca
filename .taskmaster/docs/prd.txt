@@ -236,22 +236,55 @@ Las webs cambian sin aviso. Cualquier scraper "tradicional" (selectores hardcode
 
 ---
 
+### Story 7: Banco solicita pregunta de seguridad mid-scrape
+
+**Como** operador self-hosted con cuenta en Banco General (o cualquier banco PA que use preguntas de seguridad rotantes),
+**Quiero** que si el banco intercala una pregunta de seguridad entre user/pass y Clave Móvil, el sistema o bien responda automáticamente desde un cache cifrado, o bien emita un webhook `job.human_input_required` y permita responder via `POST /jobs/{id}/human-input`,
+**Para** no necesitar VNC al sandbox ni perder el job por una pregunta esperada del banco.
+
+**Acceptance Criteria:**
+- [ ] Step type `prompt_user` (ADR-0021) ejecutable por el Scraper Runner: extrae `question_text` vía `question_selector`, computa `cache_key = sha256(bank_id:credential_ref:field_key:normalize(question_text))`, busca en vault namespace `security_q`.
+- [ ] **Cache hit**: runner llena el input con la respuesta cacheada y avanza. Sin webhook, sin signal.
+- [ ] **Cache miss**: webhook `job.human_input_required` emitido con `{job_id, bank_id, field_key, question_text, cached_attempted: false, expires_at}`. Workflow espera signal `human_input_provided` por hasta `timeout_s` (default 240s).
+- [ ] `POST /jobs/{id}/human-input` con `{field_key, answer, persist}` aplica validación: length ≤ 256 B UTF-8, Unicode whitelist (rechaza Cc/Cf), regex de field_key, rate limit 3 attempts/`(job_id, field_key)`. Errores 400/404/409/410/429 según corresponda.
+- [ ] Tras signal recibido: runner llena `selector` con `answer`, click `submit_selector?` si presente. Si `persist=true`, vault almacena la entrada con TTL 90 días.
+- [ ] **Invalidación dura**: si el step posterior a un `prompt_user` con cache hit dispara `BreakageEvent{cause: assertion_failed | http_error}`, workflow invoca `InvalidateSecurityAnswer(cache_key)` antes de propagar `job.failed reason: human_input_rejected`.
+- [ ] Mapper CLI (modo supervisado): tras detectar selector de pregunta de seguridad, prompta al operador en terminal para pre-cargar `(field_key, question_text, answer)` al vault.
+- [ ] Linter L15: rechaza maps con `prompt_user` sin `question_selector`, sin `selector`, o con `field_key` que no matchee regex.
+- [ ] Sidecar (ADR-0019) mantiene CDP vivo durante `HumanInputAwaitActivity`; reconnect tras crash del worker funciona análogo al OTP flow.
+- [ ] Audit log entries: `security_q_stored`, `security_q_lookup`, `security_q_invalidated`, `human_input_attempt` (sin `answer` en claro nunca).
+
+**Task Breakdown Hint:**
+- BankMap entity: añadir `prompt_user` al enum de step_type + Pydantic validation (4h).
+- Scraper runner: implement step handler `prompt_user` + cache lookup hooks (8h).
+- HumanInputAwaitActivity + signal handler en ScrapeJobWorkflow (8h).
+- API endpoint `POST /jobs/{id}/human-input` + validation + rate limit (6h).
+- Webhook payload `job.human_input_required` + EmitWebhookActivity wiring (3h).
+- Vault namespace `security_q` + Store/Lookup/Invalidate/Purge ops + TTL (8h).
+- Mapper CLI prompt flow + heurística de detección de security question (6h).
+- Linter L15 implementation + tests (4h).
+- Threat T27 input validation tests + cache invalidation tests + canary (6h).
+
+**Dependencies**: Story 1, REQ-002 (orchestrator), REQ-004 (runner), REQ-008 (storage / vault), REQ-010 (webhooks), ADR-0019 (sidecar).
+
+---
+
 ## Functional Requirements
 
 ### Must Have (P0)
 
 #### REQ-001: API REST FastAPI
 
-10 endpoints (ver `docs/02-components/api.md`):
-- `POST /scrape`, `GET /jobs/{id}`, `GET /jobs/{id}/result`, `POST /jobs/{id}/otp-confirmed`, `POST /jobs/{id}/cancel`.
+11 endpoints (ver `docs/02-components/api.md`):
+- `POST /scrape`, `GET /jobs/{id}`, `GET /jobs/{id}/result`, `POST /jobs/{id}/otp-confirmed`, `POST /jobs/{id}/human-input` (ADR-0021), `POST /jobs/{id}/cancel`.
 - `POST /maps/{bank}/proposals/{id}/approve|reject`.
 - `GET /banks`, `GET /accounts`, `POST /webhooks/test`.
 
-**AC**: idempotency keys, rate limiting por banco, bearer token auth single-org, OpenAPI 3.1 spec auto-generada.
+**AC**: idempotency keys, rate limiting por banco, bearer token auth single-org, OpenAPI 3.1 spec auto-generada. Endpoint `/human-input` enforce length 256 B + Unicode whitelist + 3-attempt rate limit por `(job_id, field_key)`.
 
 #### REQ-002: Temporal orquestador
 
-`ScrapeJobWorkflow` + child workflows (`MapBankWorkflow`, `RemapBankWorkflow`) + 11 activities (`LoginActivity`, `NavigateActivity`, `DownloadExcelActivity`, `ParseExcelActivity`, `ValidateActivity`, `JudgeActivity`, `MapperAgentActivity`, `RemapperAgentActivity`, `EmitWebhookActivity`, `OTPSignalAwaitActivity`, etc.) + 3 signals (`otp_confirmed`, `remap_approved`, `cancel_job`). Detalle en `docs/02-components/orchestrator.md`.
+`ScrapeJobWorkflow` + child workflows (`MapBankWorkflow`, `RemapBankWorkflow`) + 12 activities (`LoginActivity`, `NavigateActivity`, `DownloadExcelActivity`, `ParseExcelActivity`, `ValidateActivity`, `JudgeActivity`, `MapperAgentActivity`, `RemapperAgentActivity`, `EmitWebhookActivity`, `OTPSignalAwaitActivity`, `HumanInputAwaitActivity` (ADR-0021), etc.) + 4 signals (`otp_confirmed`, `human_input_provided` (ADR-0021), `remap_approved`, `cancel_job`). Detalle en `docs/02-components/orchestrator.md`.
 
 **AC**: durabilidad cross-restart, time-skipping testing, replay determinístico.
 
@@ -263,7 +296,7 @@ Agente que explora login + dashboard + descarga Excel y emite `map.json` declara
 
 #### REQ-004: Scraper runner Playwright sin LLM
 
-Lee `map.json`, ejecuta steps secuencialmente, emite `BreakageEvent` al fallar. 9 step types (navigate, click, fill, wait_for_selector, wait_for_download, select_date_range, assert_text, extract_table, download_file). Detalle en `docs/02-components/scraper-runner.md`.
+Lee `map.json`, ejecuta steps secuencialmente, emite `BreakageEvent` al fallar. 10 step types (navigate, click, fill, wait_for_selector, wait_for_download, select_date_range, assert_text, extract_table, download_file, prompt_user (ADR-0021)). Detalle en `docs/02-components/scraper-runner.md`.
 
 **AC**: 0 llamadas LLM en hot path. Replay-able contra HAR fixture.
 
@@ -303,7 +336,7 @@ Container efímero por scrape. Network policy: allowlist (dominio banco + APIs L
 
 #### REQ-010: Webhooks HMAC-SHA256
 
-7 eventos: `job.created`, `job.otp_required`, `job.progress`, `job.completed`, `job.failed`, `job.remap_proposed`, `job.human_required`. Header `X-OpenBanca-Signature: t=<ts>,v1=<hmac>`. Retry exponential hasta 6 intentos en 24h. Anti-replay window ±5 min. Endpoint `/time` para diagnosis clock skew. Detalle en `docs/02-components/webhooks.md`.
+8 eventos: `job.created`, `job.otp_required`, `job.progress`, `job.completed`, `job.failed`, `job.remap_proposed`, `job.human_required`, `job.human_input_required` (ADR-0021 — distinto de `job.human_required`: este último requiere intervención out-of-band del operador; `human_input_required` espera un valor de retorno vía `POST /jobs/{id}/human-input`). Header `X-OpenBanca-Signature: t=<ts>,v1=<hmac>` — schema HMAC inalterado (ADR-0011 no cambia, es event-agnóstico). Retry exponential hasta 6 intentos en 24h. Anti-replay window ±5 min. Endpoint `/time` para diagnosis clock skew. Detalle en `docs/02-components/webhooks.md`.
 
 **AC**: cliente puede verificar firma con HMAC-SHA256 + secret compartido. DLQ si excede retry budget.
 
@@ -397,7 +430,8 @@ Diagnosis para clientes con NTP roto. **Issue #5.**
 - LLMs nunca reciben PII del usuario en screenshots/DOM (PII redact middleware, ADR-0020, Ley 81 PA Art. 13).
 - Network policy estricta por banco en sandbox (allowlist).
 - Webhooks firmados HMAC-SHA256 + anti-replay timestamp.
-- Threat model STRIDE completo (17 amenazas categorizadas + 9 nuevas post-review = 26) en `docs/04-security/threat-model.md`.
+- Threat model STRIDE completo (17 amenazas categorizadas + 9 nuevas post-review + T27a/T27b human-input = 27 entradas) en `docs/04-security/threat-model.md`.
+- **Human input endpoint (ADR-0021, T27a/T27b)**: validación obligatoria en `POST /jobs/{id}/human-input` — length cap 256 B UTF-8, Unicode whitelist rechaza Cc/Cf, rate limit 3 attempts por `(job_id, field_key)`, audit log con `sha256(answer)[:8]` (nunca plaintext). Vault `security_q`: TTL default 90 días configurable, invalidación dura inmediata en `assertion_failed`/`http_error` post-`prompt_user`. Mismas garantías de no-fuga que credenciales bancarias (no logs, no traces, no HAR).
 
 ### Reliability
 
@@ -458,14 +492,15 @@ Hexagonal/Clean. 11 ports nombrados (BankMapPort, BrowserDriverPort, LLMPort, Jo
 | Env var | Default | Descripción |
 |---------|---------|-------------|
 | `OPEN_BANCA_MASTER_PASSPHRASE` | (none, prompt al boot) | Passphrase maestro para sqlcipher KDF. mlocked en memoria. |
-| `BANCA_OTP_SIDECAR_TTL_S` | `300` | TTL en segundos del proceso BrowserSidecar (ADR-0019). Cubre OTP wait 240s + buffer. |
+| `BANCA_OTP_SIDECAR_TTL_S` | `360` | TTL en segundos del proceso BrowserSidecar (ADR-0019). Cubre OTP wait y `prompt_user` wait (ADR-0021); default subido de 300 a 360 al añadir human input. |
+| `BANCA_HUMAN_INPUT_TTL_DAYS` | `90` | TTL en días de entradas del vault namespace `security_q` (cache de respuestas `prompt_user`, ADR-0021). |
 | `OPEN_BANCA_LIVE_SMOKE` | `0` | Si `1`, habilita smoke test contra banco real (requiere creds operador). |
 | `TEMPORAL_HOST` | `localhost:7233` | Endpoint Temporal server. |
 | `TASK_QUEUE` | `open-banca-default` | Task queue del worker. |
 
 ### Decisiones registradas
 
-15 ADRs originales + 5 nuevos post P0 review (0007-amendment, 0008-amendment, 0013-amendment, 0019, 0020) en `docs/adr/`. Source of truth para todos los trade-offs.
+15 ADRs originales + 6 nuevos (0007-amendment, 0008-amendment, 0013-amendment, 0019, 0020, 0021) en `docs/adr/`. Source of truth para todos los trade-offs.
 
 ---
 

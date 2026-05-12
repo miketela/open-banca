@@ -23,9 +23,11 @@ Cross-refs: [`threat-model.md`](./threat-model.md) (T05, T06, T13) · [`sandbox.
 
 El linter corre en CI sobre todo PR que toque `banks/*/map.json`, `banks/*/parser.json` o `community/banks/*/`. Falla si:
 
-> **Nota de implementación:** Las reglas L01-L14 son implementadas por `MapLinter`
+> **Nota de implementación:** Las reglas L01-L15 son implementadas por `MapLinter`
 > en `packages/adapters/parsing/src/open_banca_parsing/community/linter.py`.
 > Las reglas L13 y L14 fueron agregadas en T15 (ADR-0007-amendment).
+> La regla L15 se incorpora junto con la implementación del step `prompt_user`
+> (Task 36, ADR-0021).
 > CLI: `python -m open_banca_parsing.community.linter <bank_dir>`.
 
 | ID | Regla | Razón |
@@ -44,6 +46,7 @@ El linter corre en CI sobre todo PR que toque `banks/*/map.json`, `banks/*/parse
 | L12 | Steps `download_file` deben tener `expected_content_type` en la allowlist (.xlsx, .xls, .csv) o selector con extensión permitida | Prevenir descarga de formatos inesperados |
 | L13 | Cada `extract_regex` pattern compila con re2 explícitamente (T15 addition, ADR-0007-amendment) | Garantía constructiva O(n); redundante con L09 por defensa en capas |
 | L14 | Cada `lookup_table` individual en `parser.json` ≤ 1 MB serializado (T15 addition, ADR-0007-amendment) | Complementa L11 con cap por-mapa individual; CWE-400 |
+| L15 | Cada step con `step_type: prompt_user` (ADR-0021) cumple **las tres**: (a) `question_selector` non-null y string non-empty, (b) `selector` non-null y string non-empty, (c) `field_key` matchea regex `^[a-z][a-z0-9_]{2,32}$` y es único dentro del `map.json` | Garantiza correlación signal↔activity vía `field_key`, evita colisiones de cache; previene maps que extraen pregunta sin slot de input válido; T27 input validation aligned |
 
 ## Pipeline CI de validación
 
@@ -56,7 +59,8 @@ flowchart TD
     creds --> urls[L06 URL whitelist\nL07 max steps]
     urls --> parser[L08 helper invocations cap\nL09+L13 re2-compat regex\nL10 no eval/exec tokens\nL11+L14 lookup_table size]
     parser --> l12[L12 download extension allowlist]
-    l12 --> smoke[Smoke test contra fixture HAR\nopcional para community]
+    l12 --> l15[L15 prompt_user steps valid\nADR-0021]
+    l15 --> smoke[Smoke test contra fixture HAR\nopcional para community]
     smoke -- ok --> approve[Mark PR como passing]
     smoke -- fail --> reject[Block merge]
     schema -- fail --> reject
@@ -65,6 +69,7 @@ flowchart TD
     urls -- fail --> reject
     parser -- fail --> reject
     l12 -- fail --> reject
+    l15 -- fail --> reject
     approve --> merge[Merge a community/]
     merge --> publish[Publica en release sin firmar]
 ```

@@ -18,6 +18,18 @@ Banco piloto de open-banca v1. Más grande de Panamá por volumen de clientes re
 | Historial Excel | típicamente últimos 6 meses online **(por validar)** |
 | Auth | usuario + password + Clave Móvil (push 2FA). Sin SMS. |
 
+## Auth: pregunta de seguridad + Clave Móvil
+
+Banco General intercala una **pregunta de seguridad rotante** entre el form user/pass y Clave Móvil. El flow del `auth_flow` debe incluir un step `prompt_user` (ADR-0021) entre el submit de credenciales y el paso `pause_for_otp`. Características empíricas observadas hasta ahora:
+
+- Una pregunta por login (no múltiples encadenadas).
+- El conjunto de preguntas posibles **no está caracterizado** (¿pool fijo?, ¿rotación temporal?) — ver Open Questions sección §11.
+- Las respuestas las define el titular durante la apertura de su Banca en Línea; el operador self-hosted las conoce.
+- Mitigación operativa: pre-cargar respuestas via **Mapper CLI** durante onboarding (ver `mapper-agent.md` sección "Security question detection"). El cache namespace `security_q` cubre cache hits silenciosos en jobs autónomos.
+- Si banco rechaza la respuesta, el workflow invalida la entrada de cache y el job emite `job.failed reason: human_input_rejected`. Reintento requiere nuevo `POST /scrape` con el operador disponible para responder via webhook.
+
+**Login flow extendido**: `fill(user) → fill(pass) → submit → prompt_user(security_q_*) → pause_for_otp → dashboard`.
+
 ## Auth: Clave Móvil
 
 Banco General usa su propia app móvil ("Banco General App") con feature **Clave Móvil**. Tras introducir user+pass en la web, la app del cliente recibe push notification; el cliente acepta dentro de la app. La web detecta la aprobación por polling/long-poll **(por validar)** y avanza al dashboard.
@@ -154,6 +166,7 @@ Detalles operativos:
 8. ¿Qué pasa si una cuenta no tiene movimientos en el rango? ¿Excel vacío con header o error?
 9. ¿La tarjeta de crédito permite descargar movimientos del ciclo en curso o sólo cerrados?
 10. ¿Hay límite de descargas por día / por sesión?
+11. **Pregunta de seguridad (ADR-0021)**: ¿estática (una fija por usuario), rotada cada N días, o sampleada de un pool por login? Si es sampleada, el modelo de cache `security_q` requiere pre-cargar todas las posibles respuestas; el primer Mapper CLI run debe enumerar el pool. Si no se puede caracterizar el pool en el primer onboarding, el primer scrape autónomo disparará webhook `job.human_input_required` para cada pregunta nueva — flujo válido pero alta fricción inicial.
 
 ## Roadmap del banco
 

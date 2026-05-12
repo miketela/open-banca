@@ -511,6 +511,24 @@
         ],
         "status": "pending",
         "subtasks": []
+      },
+      {
+        "id": "36",
+        "title": "Implement `prompt_user` step + human-input flow (ADR-0021)",
+        "description": "Implementa el step type `prompt_user` definido en ADR-0021: extensión del BankMap DSL, HumanInputAwaitActivity en el orchestrator, signal `human_input_provided`, endpoint POST /jobs/{id}/human-input, webhook job.human_input_required, vault namespace security_q con TTL e invalidación dura, Mapper CLI pre-load, linter L15. Cubre Story 7 del PRD.",
+        "details": "Checklist (TDD obligatorio, todos los AC de Story 7):\n- [ ] BankMap entity: extender step_type enum con `prompt_user` + Pydantic validators (selector, question_selector, field_key regex `^[a-z][a-z0-9_]{2,32}$`, timeout_s, cache_answers, submit_selector?)\n- [ ] Scraper Runner: handler para `prompt_user` (extract question_text, compute cache_key, lookup vault, emit BreakageEvent on miss vs auto-fill on hit)\n- [ ] Orchestrator: HumanInputAwaitActivity (long-running, heartbeat 15s, timeout_s configurable, sidecar reuse)\n- [ ] Workflow: signal handler `human_input_provided{field_key, answer, persist}` con correlación por field_key (multi-prompt support)\n- [ ] Workflow: post-step hook que invalida cache si step posterior emite assertion_failed/http_error\n- [ ] API: POST /jobs/{id}/human-input (FastAPI route) con validación length 256 B + Unicode whitelist (rechaza Cc/Cf) + rate limit 3 attempts/(job_id, field_key) + audit log con sha256(answer)[:8]\n- [ ] Webhook: emit job.human_input_required tras cache miss; payload {job_id, bank_id, field_key, question_text (post PII-filter capa 1), cached_attempted, expires_at}\n- [ ] Vault: namespace security_q + ops StoreSecurityAnswer, LookupSecurityAnswer, InvalidateSecurityAnswer, PurgeExpiredSecurityAnswers + TTL config BANCA_HUMAN_INPUT_TTL_DAYS (default 90)\n- [ ] Mapper CLI: heurística de detección de security question + prompt interactivo terminal (pre-load mode) + escritura directa al vault\n- [ ] Linter L15: validación de prompt_user steps (question_selector + selector non-null, field_key regex, field_key único por map)\n- [ ] Tests:\n  - unit: cache_key composition, normalize, TTL eviction, signal correlation por field_key\n  - integration: Temporal time-skipping con prompt_user happy path (hit + miss), cache invalidation flow, timeout flow, sidecar reconnect post worker crash\n  - security: T27a canary (XSS/control chars/length > 256) → 400; T27b canary (cache stale → invalidate); audit log nunca contiene `answer` plaintext\n  - linter: golden tests para L15 (3 condiciones)\n- [ ] Docs: ya actualizados en este worktree (scraper-runner.md, orchestrator.md, api.md, webhooks.md, mapper-agent.md, secrets.md, threat-model.md, community-maps.md, banco-general.md, flow nuevo, ADR-0021)\n\nReferencias:\n- ADR-0021: `docs/adr/0021-human-input-step-type.md`\n- Flow: `docs/03-flows/human-input-pause-resume.md`\n- PRD Story 7, REQ-001 (11 endpoints), REQ-002 (12 activities + 4 signals), REQ-004 (10 step types), REQ-010 (8 webhook events)\n\nNo-goals de esta task:\n- NO unificar OTP con prompt_user (ADR-0021 explícitamente rechaza). El flag pause_for_otp y el step type prompt_user coexisten.\n- NO implementar sampled-pool detection — queda Open Question del ADR; cubrir caso estática primero, observar empíricamente en Banco General.",
+        "testStrategy": "TDD obligatorio. RED: tests unitarios para BankMap validation, cache_key composition, normalize fn, API validation (length/charset), signal correlation. GREEN: implementación mínima. Integration tests con Temporal time-skipping cubren happy path, cache invalidation, timeout, worker crash + reconnect. Security canaries: payload con embed direction marks → 400; payload con control chars → 400; payload > 256 B → 400; cache stale → invalidate verificado en audit log. Verificar que ningún logger emite `answer` en claro (grep canary en logs/HAR/traces).",
+        "priority": "high",
+        "phase": 3,
+        "dependencies": [
+          "9",
+          "11",
+          "12",
+          "5",
+          "25"
+        ],
+        "status": "pending",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -520,7 +538,8 @@
       "completedCount": 28,
       "tags": [
         "master"
-      ]
+      ],
+      "task_count": 36
     }
   }
 }

@@ -53,8 +53,25 @@ flowchart TD
 | `assert_text` | `selector`, `expected` (literal o regex), `mode` (`exact`/`contains`/`regex`) | texto del nodo cumple `mode` | `assertion_failed` (drift de copy) |
 | `extract_table` | `table_selector`, `column_map`, `row_filter` opcional | tabla parsea a lista de records con todas las columnas mapeadas | `schema_drift` si columna faltante o tipo inesperado |
 | `download_file` | `trigger_selector`, `expected_mime`, `expected_extension` | archivo descargado + mime/extensión correctos | `mime_mismatch`, `download_aborted` |
+| `prompt_user` | `selector` (input), `question_selector`, `field_key` (regex `^[a-z][a-z0-9_]{2,32}$`), `timeout_s` (default 240), `cache_answers` (default true), `submit_selector` opcional | runner extrae `question_text` vía `question_selector`, compone `cache_key = sha256(bank_id:credential_ref:field_key:normalize(question_text))`, busca en vault namespace `security_q`. Hit → fill auto + (submit). Miss → emite webhook `job.human_input_required` y delega a `HumanInputAwaitActivity` (pausa el runner). Tras signal `human_input_provided` → fill + persist opcional. | `selector_missing`, `question_extract_failed`, `human_input_timeout`, `human_input_rejected`, `browser_lost` |
 
 `value_ref` evita que el `map.json` cargue secretos: el runner los resuelve desde el vault sqlcipher en runtime.
+
+## Detalle del step `prompt_user`
+
+El step type `prompt_user` cubre el caso "el banco pide input textual del usuario mid-scrape" (preguntas de seguridad, captcha texto, re-auth pasiva). Definido por **ADR-0021**.
+
+A diferencia del flag `pause_for_otp: true` (que es out-of-band, sin valor de retorno), `prompt_user` recibe un `answer: str` desde un endpoint dedicado y lo inyecta en `selector`. Reutiliza el `BrowserSidecar` (ADR-0019) para mantener el browser context vivo durante el wait.
+
+**Reglas operativas:**
+
+- El runner **nunca** loguea `answer` en claro; solo `cache_key[:8]` y `field_key`.
+- Si el step posterior a un `prompt_user` con cache hit dispara `BreakageEvent{cause: assertion_failed | http_error}`, el workflow invalida `cache_key` antes de propagar el fallo (defense contra account lockout por cache stale).
+- `question_text` extraído por `question_selector` puede contener PII colateral del titular; pasa por la Capa 1 del PII filter (ADR-0020) antes de adjuntarse al webhook.
+- `field_key` lo declara el autor del map; sirve como identificador estable de qué pregunta (no qué respuesta).
+- Múltiples `prompt_user` en un mismo flow son válidos. El signal `human_input_provided` carga `field_key` para correlación.
+
+Ver flow completo: [`../03-flows/human-input-pause-resume.md`](../03-flows/human-input-pause-resume.md).
 
 ## `BreakageEvent`: contrato hacia Judge
 

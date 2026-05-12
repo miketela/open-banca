@@ -14,13 +14,25 @@ El Webhook Emitter notifica al cliente sobre el ciclo de vida de cada job. Event
 | `job.completed` | Workflow termina con éxito y resultado normalizado disponible | `job_id`, `bank_id`, `accounts_count`, `transactions_count`, `result_url` | sí |
 | `job.failed` | Workflow aborta sin recuperación | `job_id`, `bank_id`, `error_code`, `error_message` (sin secretos), `phase` | sí |
 | `job.remap_proposed` | Judge propone remap pero `confidence < 0.85` o `risk != low` (HITL) | `job_id`, `bank_id`, `proposal_id`, `confidence`, `risk`, `diff_summary` | sí |
-| `job.human_required` | Judge escaló (selector roto crítico, schema cambió, etc.) | `job_id`, `bank_id`, `reason`, `last_screenshot_url` | sí |
+| `job.human_required` | Judge escaló (selector roto crítico, schema cambió, etc.) — sin valor de retorno; el operador interviene fuera de banda (review del map, etc.) | `job_id`, `bank_id`, `reason`, `last_screenshot_url` | sí |
+| `job.human_input_required` | Step `prompt_user` (ADR-0021) alcanza un input que requiere **valor textual del operador** (pregunta de seguridad, captcha texto) y el cache vault no tiene hit. Resoluble vía `POST /jobs/{id}/human-input`. | `job_id`, `bank_id`, `field_key`, `question_text`, `cached_attempted`, `expires_at` | sí |
+
+### Difference: `job.human_required` vs `job.human_input_required`
+
+Eventos semánticamente distintos pese al naming cercano:
+
+- **`job.human_required`** — Judge no puede progresar, requiere **intervención del operador** (revisión del map, aprobar un remap, decidir abort). Out-of-band; no hay endpoint que entregue un valor de retorno al workflow. El operador actúa vía UI/CLI/PR.
+- **`job.human_input_required`** — el **banco** está pidiendo un valor (respuesta a pregunta de seguridad). Es flujo esperado, no breakage. Se resuelve vía `POST /jobs/{id}/human-input` con `{field_key, answer}`. Equivalente conceptual a `job.otp_required` pero con payload de retorno.
+
+Cliente debe distinguir por el nombre del evento; payloads tienen forma distinta.
 
 Reglas:
 
 - Todos los payloads incluyen un `event` con el nombre y un `id` UUID por entrega (no por job) para idempotencia client-side.
 - `result_url` y `last_screenshot_url` apuntan al mismo host del API, requieren el token del operador para descargar.
 - Ningún payload incluye plaintext de credenciales, OTP, ni cookies de sesión.
+- En `job.human_input_required`, `question_text` pasa previamente por la Capa 1 del PII filter (ADR-0020) por si el banco renderiza datos del titular dentro del prompt.
+- Schema HMAC es event-agnóstico (ADR-0011 no cambia con la incorporación del 8º evento). Cliente recibe la misma firma `X-OpenBanca-Signature: t=<ts>,v1=<hmac>` independientemente del evento.
 
 ## Envío con firma HMAC
 
