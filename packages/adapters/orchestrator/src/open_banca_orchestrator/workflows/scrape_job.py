@@ -406,11 +406,17 @@ class ScrapeJobWorkflow:
         # TODO: replace with actual accounts from map.json + account_filter
         accounts_to_scrape: list[str] = input.account_filter or ["default-account"]
 
-        since_date = (
-            datetime.date.fromisoformat(input.since_cursor)
-            if input.since_cursor
-            else datetime.date(2020, 1, 1)
-        )
+        # Resolve since_date:
+        #   - full_historical mode → 6-month lookback (configurable via env in activity)
+        #   - incremental mode with cursor → use cursor as-is (NO additional subtraction;
+        #     DedupEngine.effective_since() already applied the 3-day buffer at API layer)
+        #   - incremental mode without cursor → should not reach here (API falls back to
+        #     full_historical when no cursor exists), but guard defensively
+        if input.mode == ScrapeMode.incremental and input.since_cursor is not None:
+            since_date = datetime.date.fromisoformat(input.since_cursor)
+        else:
+            # Full historical: default 6-month lookback
+            since_date = (workflow.now() - datetime.timedelta(days=180)).date()
         until_date = workflow.now().date()
 
         for account_id in accounts_to_scrape:
@@ -504,6 +510,11 @@ class ScrapeJobWorkflow:
         #                        transactions=all_transactions),
         #     start_to_close_timeout=timedelta(seconds=30),
         # )
+        # NOTE (task-32): After persist_result completes, the per-account cursor
+        # advances automatically — DedupEngine.get_cursor(account_id) derives
+        # MAX(posted_at) from the transactions table.  No explicit save_cursor
+        # call is required.  DedupEngine.effective_since(account_id) will return
+        # the new cursor - 3 days on the next incremental run.
 
         # ------------------------------------------------------------------
         # Step 10: EmitWebhookActivity — job.completed
