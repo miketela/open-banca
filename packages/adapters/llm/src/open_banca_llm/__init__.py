@@ -1,14 +1,18 @@
-"""open-banca LLM adapter — Mapper, Validator, Judge agents."""
+"""open-banca LLM adapter — Mapper, Validator, Judge, Remapper agents."""
 
 from open_banca_llm.judge.agent import JudgeAgent, JudgeDecision, JudgeRisk, JudgeRoute
+from open_banca_llm.remapper.agent import RemapPatch, RemapperAgent, RemapperResult
 from open_banca_llm.validator.agent import ValidationReport, ValidationVerdict, ValidatorAgent
 
 __all__ = [
     "JudgeAgent",
     "JudgeDecision",
-    "JudgeRoute",
     "JudgeRisk",
-    "ValidatorAgent",
+    "JudgeRoute",
+    "RemapPatch",
+    "RemapperAgent",
+    "RemapperResult",
     "ValidationReport",
     "ValidationVerdict",
+    "ValidatorAgent",
 ]
