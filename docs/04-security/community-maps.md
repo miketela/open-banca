@@ -23,43 +23,48 @@ Cross-refs: [`threat-model.md`](./threat-model.md) (T05, T06, T13) · [`sandbox.
 
 El linter corre en CI sobre todo PR que toque `banks/*/map.json`, `banks/*/parser.json` o `community/banks/*/`. Falla si:
 
+> **Nota de implementación:** Las reglas L01-L14 son implementadas por `MapLinter`
+> en `packages/adapters/parsing/src/open_banca_parsing/community/linter.py`.
+> Las reglas L13 y L14 fueron agregadas en T15 (ADR-0007-amendment).
+> CLI: `python -m open_banca_parsing.community.linter <bank_dir>`.
+
 | ID | Regla | Razón |
 |----|-------|-------|
-| L01 | Schema JSON válido contra `map.schema.json` | Tipos y campos esperados |
-| L02 | Sólo helpers whitelisted del DSL: `parse_date`, `extract_regex`, `normalize_amount`, `select`, `click`, `wait_for`, `download` | Sin Python arbitrario |
-| L03 | Sin tokens `eval`, `exec`, `__import__`, `subprocess`, `os.`, `compile` | Defense in depth si parser cambia |
-| L04 | Selectores no usan JS injection (`javascript:`, `data:`, atributos con `on*=`) | Vector de XSS sobre el browser |
-| L05 | URLs sólo `https://` y bajo el dominio declarado en `bank.yaml` | T05: prevenir exfiltración a host externo |
-| L06 | Sin `http://` salvo localhost en fixtures de tests | TLS obligatorio |
-| L07 | Tamaño máximo del map ≤ 64 KB | Evitar map gigante con payload escondido |
-| L08 | Sin atributos `redirect` o `follow_external` | Prevenir desvío del flujo a host malicioso |
-| L09 | `parser.json` sólo helpers DSL whitelisted; todo `extract_regex` pattern debe ser **re2-compatible** (linter compila con google/re2; patterns con backtracking ilimitado son rechazados — CWE-1333) | Estabilidad del runner; inmunidad a ReDoS |
-| L10 | Campos de input declarados deben mapear a placeholders conocidos (`<<username>>`, `<<password>>`, `<<otp>>`) | Sin nombres custom para tipear cred en lugares raros |
-| L11 | Hosts secundarios (CDN, fonts) deben estar en `bank.yaml` allowlist | Allowlist explícito por banco |
-| L12 | No `eval` en parser DSL ni en map | Redundante con L02/L03, defensa por capas |
-| L13 | Cada `extract_regex` pattern debe compilar con re2 sin error. Rechaza lookahead/lookbehind sin límite de longitud. | Garantía constructiva O(n); elimina ReDoS (CWE-1333) |
-| L14 | Tamaño total de todos los `lookup_table` maps en un `parser.json` ≤ 1 MB serializado | Complementa el cap runtime de 100 K filas; CWE-400 |
+| L01 | `map.json` valida como `BankMap` Pydantic (bank_id, version, steps, schema_version requeridos) | Tipos y campos esperados |
+| L02 | `parser.json` valida como `ParserSpec` Pydantic (version, bank, sheets requeridos) | Schema del DSL completo |
+| L03 | Campo `version` no vacío y con formato semver (major.minor.patch[-prerelease]) en ambos archivos | Trazabilidad de versiones |
+| L04 | Ningún step con `sensitive:true` tiene un campo `value` literal (debe usar `value_ref`) | Credenciales nunca embebidas en el map |
+| L05 | Ningún selector XPath usa `//*` ni `descendant::*` (O(n²) traversal, DoS risk) | Prevenir DoS por selectores degenerados |
+| L06 | URLs en steps `navigate` usan solo `https://` y pertenecen al mismo dominio (eTLD+1) del primer step `navigate` del banco | T05: prevenir exfiltración a host externo |
+| L07 | Total de steps en `map.json` < 200 | Evitar maps gigantes con payload escondido |
+| L08 | Total de invocaciones de helpers DSL por `SheetSpec` < 10 | Cap de complejidad por sheet |
+| L09 | Todo `extract_regex` pattern en `parser.json` compila con `re2` (google-re2) sin error | Inmunidad a ReDoS (CWE-1333); patterns con lookahead/lookbehind rechazados |
+| L10 | El JSON serializado de `parser.json` no contiene los tokens `eval`, `exec`, `__import__` | Defense-in-depth; sin Python arbitrario en DSL |
+| L11 | Tamaño JSON total de todos los `lookup_table` maps en `parser.json` ≤ 1 MB | CWE-400; complementa el cap runtime de 100K filas |
+| L12 | Steps `download_file` deben tener `expected_content_type` en la allowlist (.xlsx, .xls, .csv) o selector con extensión permitida | Prevenir descarga de formatos inesperados |
+| L13 | Cada `extract_regex` pattern compila con re2 explícitamente (T15 addition, ADR-0007-amendment) | Garantía constructiva O(n); redundante con L09 por defensa en capas |
+| L14 | Cada `lookup_table` individual en `parser.json` ≤ 1 MB serializado (T15 addition, ADR-0007-amendment) | Complementa L11 con cap por-mapa individual; CWE-400 |
 
 ## Pipeline CI de validación
 
 ```mermaid
 flowchart TD
     pr[PR community map] --> ci[GitHub Actions trigger]
-    ci --> schema[L01 schema check]
-    schema --> dsl[L02-L04 DSL whitelist + token deny]
-    dsl --> urls[L05-L08 URL + size + redirect rules]
-    urls --> parser[L09-L10 parser DSL + placeholders\nL09: re2-compat regex check]
-    parser --> hosts[L11-L12 host allowlist coherence]
-    hosts --> dslharden[L13-L14 re2 compile + lookup_table size]
-    dslharden --> smoke[Smoke test contra fixture HAR<br/>opcional para community]
+    ci --> schema[L01-L02 schema check\nBankMap + ParserSpec Pydantic]
+    schema --> version[L03 version semver]
+    version --> creds[L04 no embedded creds\nL05 XPath safety]
+    creds --> urls[L06 URL whitelist\nL07 max steps]
+    urls --> parser[L08 helper invocations cap\nL09+L13 re2-compat regex\nL10 no eval/exec tokens\nL11+L14 lookup_table size]
+    parser --> l12[L12 download extension allowlist]
+    l12 --> smoke[Smoke test contra fixture HAR\nopcional para community]
     smoke -- ok --> approve[Mark PR como passing]
     smoke -- fail --> reject[Block merge]
     schema -- fail --> reject
-    dsl -- fail --> reject
+    version -- fail --> reject
+    creds -- fail --> reject
     urls -- fail --> reject
     parser -- fail --> reject
-    hosts -- fail --> reject
-    dslharden -- fail --> reject
+    l12 -- fail --> reject
     approve --> merge[Merge a community/]
     merge --> publish[Publica en release sin firmar]
 ```

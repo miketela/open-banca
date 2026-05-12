@@ -1,0 +1,119 @@
+# sign-bank-maps.yml — Keyless cosign signing of bank maps on tag push.
+#
+# Triggered when a tag matching bank-maps/v* is pushed.
+# Uses GitHub OIDC keyless signing via cosign (Sigstore).
+# Uploads signatures + certificates to the GitHub release.
+# Verifies the signature immediately post-sign.
+#
+# Threat mitigated: T25 (GitHub OIDC compromise) — signature binds to the
+# workflow's OIDC identity, not a long-lived key. Any forgery requires
+# compromising GitHub's OIDC issuer.
+
+name: Sign Bank Maps
+
+on:
+  push:
+    tags:
+      - "bank-maps/v*"
+
+permissions:
+  contents: write       # upload release assets
+  id-token: write       # OIDC token for keyless cosign
+
+jobs:
+  sign-and-verify:
+    name: Sign & verify bank maps
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.2.4"
+
+      - name: Discover bank map files
+        id: discover
+        shell: bash
+        run: |
+          # Find all map.json and parser.json under packages/banks/
+          mapfiles=$(find packages/banks -name 'map.json' -o -name 'parser.json' | sort)
+          if [ -z "$mapfiles" ]; then
+            echo "No map files found under packages/banks/" >&2
+            exit 1
+          fi
+          echo "Found map files:"
+          echo "$mapfiles"
+          # Export as newline-delimited list
+          printf '%s\n' "$mapfiles" > /tmp/mapfiles.txt
+          echo "map_count=$(echo "$mapfiles" | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Sign bank map files (keyless OIDC)
+        shell: bash
+        run: |
+          while IFS= read -r filepath; do
+            echo "Signing: $filepath"
+            cosign sign-blob \
+              --yes \
+              --bundle "${filepath}.bundle" \
+              "$filepath"
+            echo "  → bundle written: ${filepath}.bundle"
+          done < /tmp/mapfiles.txt
+
+      - name: Verify signatures post-sign
+        shell: bash
+        run: |
+          REPO_OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          IDENTITY_REGEXP="https://github.com/${REPO_OWNER}/${REPO_NAME}/.github/workflows/sign-bank-maps.yml@refs/tags/.*"
+
+          while IFS= read -r filepath; do
+            echo "Verifying: $filepath"
+            cosign verify-blob \
+              --bundle "${filepath}.bundle" \
+              --certificate-identity-regexp "$IDENTITY_REGEXP" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$filepath"
+            echo "  → OK"
+          done < /tmp/mapfiles.txt
+
+      - name: Collect signature bundles
+        shell: bash
+        run: |
+          find packages/banks -name '*.bundle' | sort > /tmp/bundles.txt
+          echo "Bundles to upload:"
+          cat /tmp/bundles.txt
+
+      - name: Create or update GitHub release with signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Create release if it doesn't exist
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Bank Maps ${TAG}" \
+              --notes "Signed bank maps release. Signatures verified via GitHub OIDC keyless signing (Sigstore/cosign)." \
+              --latest=false
+          fi
+          # Upload all bundle files
+          while IFS= read -r bundle; do
+            gh release upload "$TAG" "$bundle" --clobber
+          done < /tmp/bundles.txt
+          echo "Uploaded $(wc -l < /tmp/bundles.txt) bundle(s) to release $TAG"
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## Bank Maps Signing Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Tag:** \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Signed files:** $(wc -l < /tmp/mapfiles.txt)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**OIDC issuer:** \`https://token.actions.githubusercontent.com\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "All signatures verified post-sign via \`cosign verify-blob\`." >> "$GITHUB_STEP_SUMMARY"
