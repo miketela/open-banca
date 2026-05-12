@@ -53,14 +53,18 @@ def _setup_otel(app: FastAPI) -> None:
     setup_tracer("api")
 
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-untyped]
+        from opentelemetry.instrumentation.fastapi import (
+            FastAPIInstrumentor,  # type: ignore[import-untyped]
+        )
 
         FastAPIInstrumentor.instrument_app(app)
     except ImportError:
         pass  # opentelemetry-instrumentation-fastapi not installed — skip silently
 
     try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor  # type: ignore[import-untyped]
+        from opentelemetry.instrumentation.httpx import (
+            HTTPXClientInstrumentor,  # type: ignore[import-untyped]
+        )
 
         HTTPXClientInstrumentor().instrument()
     except ImportError:

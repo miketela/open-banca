@@ -191,6 +191,9 @@ class FakeTemporalAdapter:
     async def async_signal_remap_approved(self, proposal_id: str) -> None:
         self.remap_signals.append(proposal_id)
 
+    async def async_signal_remap_rejected(self, proposal_id: str) -> None:
+        pass  # reject signals tracked separately if needed
+
     async def async_cancel_job(self, job_id: str) -> None:
         self.cancellations.append(job_id)
 
@@ -435,16 +438,77 @@ class TestRemapProposals:
         wired_client: TestClient,
         fake_store: FakeJobStore,
         fake_temporal: FakeTemporalAdapter,
+        tmp_path: Any,
     ) -> None:
-        """POST /maps/{bank}/proposals/{id}/approve signals workflow + marks storage."""
-        proposal = _make_proposal()
+        """POST /maps/{bank}/proposals/{id}/approve applies patch + signals workflow → 200."""
+        import json as _json
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
+
+        # Create a minimal map.json for banco_general in tmp_path
+        bank_dir = tmp_path / "banco_general"
+        bank_dir.mkdir()
+        (bank_dir / "map.json").write_text(
+            _json.dumps(
+                {
+                    "bank_id": "banco_general",
+                    "version": "0.0.1",
+                    "schema_version": "1",
+                    "signature": None,
+                    "steps": [
+                        {"step_id": "login", "action": "navigate", "target": "https://x.com"},
+                        {"step_id": "wait", "action": "wait_for_selector", "target": "#form"},
+                    ],
+                }
+            )
+        )
+
+        # Use a RemapPatch-shaped patch_diff
+        patch_diff = _json.dumps(
+            {
+                "target_step_index": 1,
+                "new_steps": [
+                    {"step_id": "wait_new", "action": "wait_for_selector", "target": "#new-form"}
+                ],
+            }
+        )
+        proposal = RemapProposal(
+            id=str(uuid4()),
+            bank="banco_general",
+            breakage_id=str(uuid4()),
+            judge_decision="selector_changed",
+            confidence=0.9,
+            risk="low",
+            patch_diff=patch_diff,
+            status=RemapStatus.PENDING,
+            expires_at=_now() + timedelta(hours=24),
+        )
         fake_store.save_proposal(proposal)
 
-        resp = wired_client.post(
-            f"/maps/banco_general/proposals/{proposal.id}/approve",
-            headers=AUTH,
-        )
-        assert resp.status_code == 204, resp.text
+        fake_git = MagicMock()
+        fake_git.commit_sha = "deadbeef"
+        fake_git.tag = "bank-maps/banco_general/v0.0.2"
+
+        with (
+            mock_patch(
+                "open_banca_api.routers.maps._get_banks_root",
+                return_value=tmp_path,
+            ),
+            mock_patch(
+                "open_banca_api.routers.maps.git_commit_and_tag",
+                return_value=fake_git,
+            ),
+        ):
+            resp = wired_client.post(
+                f"/maps/banco_general/proposals/{proposal.id}/approve",
+                headers=AUTH,
+            )
+
+        # Endpoint returns 200 with body (task-21: full apply pipeline)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["proposal_id"] == proposal.id
+        assert body["commit_sha"] == "deadbeef"
         assert proposal.id in fake_temporal.remap_signals
 
     def test_remap_reject_no_signal(
