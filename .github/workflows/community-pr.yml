@@ -1,0 +1,125 @@
+# community-pr.yml — CI gate for community bank map pull requests.
+#
+# Triggered on PRs touching packages/banks/**
+# Runs the 14-rule MapLinter against all changed bank directories.
+# Blocks merge if any linter rule fails.
+# Posts a PR comment with the lint summary.
+
+name: Community Map Linter
+
+on:
+  pull_request:
+    paths:
+      - "packages/banks/**"
+
+permissions:
+  contents: read
+  pull-requests: write   # post PR comments
+
+jobs:
+  lint-maps:
+    name: Lint changed bank maps
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install workspace dependencies
+        run: uv sync --all-packages
+
+      - name: Detect changed bank directories
+        id: changed
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # Find bank dirs that changed (contain map.json or parser.json)
+          changed_dirs=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep -E '^packages/banks/[^/]+/' \
+            | sed -E 's|(packages/banks/[^/]+)/.*|\1|' \
+            | sort -u)
+
+          if [ -z "$changed_dirs" ]; then
+            echo "No bank directories changed."
+            echo "bank_dirs=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed bank directories:"
+            echo "$changed_dirs"
+            # Newline-delimited → space-delimited for matrix
+            dirs_oneline=$(echo "$changed_dirs" | tr '\n' ' ' | sed 's/ $//')
+            echo "bank_dirs=$dirs_oneline" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run linter on changed bank directories
+        id: lint
+        if: steps.changed.outputs.bank_dirs != ''
+        shell: bash
+        run: |
+          PASS=true
+          REPORT=""
+
+          for bank_dir in ${{ steps.changed.outputs.bank_dirs }}; do
+            echo "=== Linting: $bank_dir ==="
+            set +e
+            output=$(uv run python -m open_banca_parsing.community.linter "$bank_dir" 2>&1)
+            exit_code=$?
+            set -e
+
+            echo "$output"
+            REPORT="${REPORT}### \`${bank_dir}\`\n\`\`\`\n${output}\n\`\`\`\n\n"
+
+            if [ "$exit_code" -ne 0 ]; then
+              PASS=false
+            fi
+          done
+
+          # Write report to file for PR comment step
+          printf "%b" "$REPORT" > /tmp/lint_report.txt
+
+          if [ "$PASS" = "false" ]; then
+            echo "lint_ok=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          else
+            echo "lint_ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post lint results as PR comment
+        if: always() && steps.changed.outputs.bank_dirs != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = '';
+            try {
+              report = fs.readFileSync('/tmp/lint_report.txt', 'utf8');
+            } catch {
+              report = '_Lint report unavailable._';
+            }
+            const lintOk = '${{ steps.lint.outputs.lint_ok }}' === 'true';
+            const status = lintOk ? '✅ All linter rules passed' : '❌ Linter failures detected';
+            const body = `## Community Map Lint Results\n\n${status}\n\n${report}\n\n` +
+              `_Powered by \`open_banca_parsing.community.linter\` — 14 rules (L01–L14)_`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body,
+            });
+
+      - name: No changed bank directories
+        if: steps.changed.outputs.bank_dirs == ''
+        run: echo "No bank directories changed — skipping linter."
