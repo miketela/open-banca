@@ -15,12 +15,22 @@ import ctypes
 import typer
 
 
-def prompt_password(prompt_text: str) -> str:
+def prompt_password(prompt_text: str, *, allow_blank: bool = False) -> str:
     """Prompt for a secret value with no echo.
 
     Uses ``typer.prompt(hide_input=True)`` which delegates to Click /
     ``getpass`` internally.  The returned string is NOT confirmed.
+
+    When ``allow_blank=True`` an empty submission is accepted on first try
+    (used for optional fields like PIN). Default behaviour reprompts on empty.
     """
+    if allow_blank:
+        return typer.prompt(
+            prompt_text,
+            hide_input=True,
+            default="",
+            show_default=False,
+        )
     return typer.prompt(prompt_text, hide_input=True)
 
 

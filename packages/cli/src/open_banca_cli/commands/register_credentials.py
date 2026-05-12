@@ -62,7 +62,7 @@ def register_credentials(
 
         pin_required = bank.lower() in _BANKS_WITH_PIN
         if pin_required:
-            pin = prompt_password("PIN (leave blank to skip)")
+            pin = prompt_password("PIN (leave blank to skip)", allow_blank=True)
 
         # Confirmation summary — no plaintext displayed.
         console.print("\n[bold]Summary[/bold]")
