@@ -1,9 +1,15 @@
 {
   "bank_id": "banco_general",
-  "version": "0.0.2",
+  "version": "0.0.1-stub",
   "schema_version": "1",
   "signature": null,
   "steps": [
+    {
+      "step_id": "login_navigate",
+      "action": "navigate",
+      "url": "https://www.bgeneral.com/personas/banca-en-linea/",
+      "wait_until": "load"
+    },
     {
       "step_id": "login_wait_form",
       "action": "wait_for_selector",

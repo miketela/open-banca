@@ -76,6 +76,9 @@ class _NullTemporalAdapter:
     async def async_signal_remap_approved(self, proposal_id: str) -> None:
         raise RuntimeError("No Temporal server available in this test fixture.")
 
+    async def async_signal_remap_rejected(self, proposal_id: str) -> None:
+        raise RuntimeError("No Temporal server available in this test fixture.")
+
     async def async_cancel_job(self, job_id: str) -> None:
         raise RuntimeError("No Temporal server available in this test fixture.")
 
