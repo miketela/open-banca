@@ -304,3 +304,15 @@ def get_list_accounts_uc(
 ) -> ListAccounts:
     """Wire ListAccounts use case."""
     return ListAccounts(job_store=job_store)  # type: ignore[arg-type]
+
+
+def get_dedup_engine(
+    conn: Annotated[object, Depends(get_storage_connection)],
+) -> object:
+    """Return a DedupEngine backed by the current connection.
+
+    Used by the scrape router to query per-account cursors for incremental mode.
+    """
+    from open_banca_storage.dedup.engine import DedupEngine
+
+    return DedupEngine(conn)
