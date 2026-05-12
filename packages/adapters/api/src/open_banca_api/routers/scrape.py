@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from open_banca_api.auth import verify_bearer
 from open_banca_api.dependencies import (
@@ -221,19 +221,28 @@ async def create_scrape(
 @router.get(
     "/jobs/{job_id}/cursor",
     response_model=JobCursorResponse,
-    summary="Get current per-account cursors for a job",
+    summary="Get current per-account cursors",
     description=(
-        "Returns the current DedupEngine effective_since (cursor - 3 days) "
-        "for each account associated with the job. Useful for debugging "
-        "incremental scrape windows."
+        "Returns DedupEngine.effective_since (cursor - 3 days) for each requested "
+        "account_id.  Pass account IDs as repeated query params: "
+        "?accounts=acc-001&accounts=acc-002.  The job must exist (404 otherwise). "
+        "Useful for debugging incremental scrape windows."
     ),
 )
 async def get_job_cursor(
     job_id: str,
+    accounts: Annotated[list[str] | None, Query(description="Account IDs to query cursors for")] = None,
     job_store: Annotated[object, Depends(get_job_store)] = ...,  # type: ignore[assignment]
     dedup_engine: Annotated[object, Depends(get_dedup_engine)] = ...,  # type: ignore[assignment]
 ) -> JobCursorResponse:
-    """GET /jobs/{id}/cursor — return per-account effective_since cursors."""
+    """GET /jobs/{id}/cursor — return per-account effective_since cursors.
+
+    Query params:
+        accounts: Repeated list of account_id strings to query.  If omitted,
+                  bank accounts are looked up via SqliteJobStore.list_accounts_by_bank
+                  if available; otherwise returns an empty dict.
+    """
+
     job = job_store.load_job(job_id)  # type: ignore[attr-defined]
     if job is None:
         raise HTTPException(
@@ -241,20 +250,19 @@ async def get_job_cursor(
             detail={"error": "job_not_found", "message": f"Job {job_id!r} not found."},
         )
 
-    # Resolve account list from the job's account_filter (stored as since_cursor context)
-    # In this implementation we query all accounts known to the DB for this bank.
-    # Use job's stored since_cursor to derive original accounts if available.
-    # For now: return empty cursors dict — caller knows which accounts to query.
-    # When account registry lands (T33+), replace with actual account list.
+    # Resolve account list: prefer explicit query params, fall back to bank accounts
+    account_list: list[str] = list(accounts) if accounts else []
+
+    if not account_list:
+        # Try SqliteJobStore.list_accounts_by_bank if available
+        try:
+            account_objs = job_store.list_accounts_by_bank(job.bank)  # type: ignore[attr-defined]
+            account_list = [a.id for a in account_objs]
+        except (AttributeError, Exception):
+            account_list = []
+
     cursors: dict[str, str] = {}
-
-    # Try to get the accounts from the job store if a list_accounts method exists
-    try:
-        accounts = job_store.list_accounts_for_job(job_id)  # type: ignore[attr-defined]
-    except (AttributeError, Exception):
-        accounts = []
-
-    for account_id in accounts:
+    for account_id in account_list:
         effective = dedup_engine.effective_since(account_id)  # type: ignore[attr-defined]
         if effective is not None:
             cursors[account_id] = effective.isoformat()

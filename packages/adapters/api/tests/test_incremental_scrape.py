@@ -402,6 +402,30 @@ def test_cursor_endpoint_job_not_found(
     assert resp.status_code == 404
 
 
+def test_get_jobs_cursor_endpoint_with_cursors(
+    job_store: _NullJobStore, cursor_dedup: _CursorDedupEngine
+) -> None:
+    """GET /jobs/{id}/cursor with ?accounts=acc-001 returns effective_since for that account."""
+    client = _make_client(job_store, cursor_dedup)
+    create_resp = client.post(
+        "/scrape",
+        json={"bank_id": "banco_general", "credentials": "enc", "accounts": ["acc-001"]},
+        headers=AUTH,
+    )
+    assert create_resp.status_code == 202
+    job_id = create_resp.json()["job_id"]
+
+    # Pass account explicitly via query param
+    resp = client.get(f"/jobs/{job_id}/cursor?accounts=acc-001", headers=AUTH)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["job_id"] == job_id
+    # cursor_dedup returns cursor - 3d for any account
+    assert "acc-001" in data["cursors"]
+    expected_since = (datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC) - timedelta(days=3)).isoformat()
+    assert data["cursors"]["acc-001"] == expected_since
+
+
 def test_scrape_default_mode_is_incremental_api(
     job_store: _NullJobStore, null_dedup: _NullDedupEngine
 ) -> None:
