@@ -12,9 +12,9 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from open_banca_domain.entities.breakage_event import BreakageEvent
 from temporalio.testing import ActivityEnvironment
 
+from open_banca_domain.entities.breakage_event import BreakageEvent
 from open_banca_orchestrator.activities.download_excel import (
     DownloadExcelInput,
     DownloadPeriod,
@@ -33,7 +33,6 @@ from open_banca_orchestrator.activities.login import (
     login,
 )
 from open_banca_orchestrator.activities.mapper_agent import (
-    BankMap,
     MapperAgentInput,
     mapper_agent,
 )
@@ -49,7 +48,6 @@ from open_banca_orchestrator.activities.parse_excel import (
 )
 from open_banca_orchestrator.activities.remapper_agent import (
     RemapperAgentInput,
-    remapper_agent,
 )
 from open_banca_orchestrator.activities.validate import ValidateInput, validate
 
@@ -252,24 +250,44 @@ async def test_mapper_agent_raises_not_implemented(env: ActivityEnvironment) -> 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_remapper_agent_raises_not_implemented(env: ActivityEnvironment) -> None:
-    """RemapperAgentActivity PLACEHOLDER raises NotImplementedError."""
+def test_remapper_agent_input_validates() -> None:
+    """RemapperAgentInput schema validates correctly (task-20 implementation).
+
+    The placeholder is replaced — activity now executes the full HITL flow.
+    This test validates the input schema only (no activity execution).
+    """
+    import datetime  # noqa: PLC0415
+
+    from open_banca_domain.entities.bank_map import BankMap as DomainBankMap  # noqa: PLC0415
+    from open_banca_domain.entities.bank_map import StepSpec  # noqa: PLC0415
+    from open_banca_domain.entities.breakage_event import BreakageEvent  # noqa: PLC0415
+
     input_ = RemapperAgentInput(
         job_id="job-001",
         bank_id="banco_general",
-        breakage_hash="deadbeef",
+        breakage_hash="sha256:deadbeef",
         run_id="run-001",
-        current_map=BankMap(
+        current_map=DomainBankMap(
             bank_id="banco_general",
             version="1.0.0",
-            generated_at="2026-01-01T00:00:00Z",
+            schema_version="1",
+            steps=[StepSpec(step_id="s1", action="navigate")],
+        ),
+        breakage_event=BreakageEvent(
+            job_id="job-001",
+            step_index=0,
+            step_type="navigate",
+            error_class="layout_changed",
+            screenshot_ref="sha256:abc",
+            dom_excerpt="<div>broken</div>",
+            occurred_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         ),
         proposal_id="prop-001",
         sandbox_container_id="sandbox-001",
     )
-    with pytest.raises(NotImplementedError):
-        await env.run(remapper_agent, input_)
+    assert input_.job_id == "job-001"
+    assert input_.bank_id == "banco_general"
+    assert input_.breakage_event.step_index == 0
 
 
 # ---------------------------------------------------------------------------
