@@ -610,6 +610,9 @@ class MapperAgent:
         except ImportError as exc:
             raise MapperError("browser-use not installed. Install from path dep or PyPI.") from exc
 
+        # flash_mode + use_thinking=False shrink the tool schema below
+        # Anthropic's "compiled grammar too large" threshold (req fails otherwise
+        # on the strict tool-calling path with the default browser-use schema).
         agent = Agent(  # type: ignore[call-arg]
             task=task,
             llm=llm,  # type: ignore[arg-type]
@@ -617,6 +620,8 @@ class MapperAgent:
             system_prompt_override=SYSTEM_PROMPT,
             max_steps=self._max_steps,
             register_should_stop_callback=tracker.should_stop_async,
+            flash_mode=True,
+            use_thinking=False,
         )
 
         try:
