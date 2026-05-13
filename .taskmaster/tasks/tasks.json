@@ -527,19 +527,19 @@
           "5",
           "25"
         ],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-05-13T00:39:19.110Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-05-12T02:08:36.883Z",
-      "taskCount": 35,
-      "completedCount": 28,
+      "lastModified": "2026-05-13T00:39:19.110Z",
+      "taskCount": 36,
+      "completedCount": 29,
       "tags": [
         "master"
-      ],
-      "task_count": 36
+      ]
     }
   }
 }
