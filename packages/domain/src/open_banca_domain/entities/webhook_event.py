@@ -1,4 +1,4 @@
-"""WebhookEvent entity — 7 canonical outbound events."""
+"""WebhookEvent entity — 8 canonical outbound events."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class WebhookEventType(StrEnum):
-    """The 7 webhook event types per ADR-0011 / REQ-010."""
+    """The 8 webhook event types per ADR-0011 / REQ-010 / ADR-0021."""
 
     JOB_CREATED = "job.created"
     JOB_OTP_REQUIRED = "job.otp_required"
@@ -18,6 +18,7 @@ class WebhookEventType(StrEnum):
     JOB_FAILED = "job.failed"
     JOB_REMAP_PROPOSED = "job.remap_proposed"
     JOB_HUMAN_REQUIRED = "job.human_required"
+    JOB_HUMAN_INPUT_REQUIRED = "job.human_input_required"
 
 
 class WebhookEvent(BaseModel):

@@ -10,6 +10,7 @@ from open_banca_browser.step_executors.download_file import execute_download_fil
 from open_banca_browser.step_executors.extract_table import execute_extract_table
 from open_banca_browser.step_executors.fill import execute_fill
 from open_banca_browser.step_executors.navigate import execute_navigate
+from open_banca_browser.step_executors.prompt_user import execute_prompt_user
 from open_banca_browser.step_executors.select_date_range import execute_select_date_range
 from open_banca_browser.step_executors.wait_for_download import execute_wait_for_download
 from open_banca_browser.step_executors.wait_for_selector import execute_wait_for_selector
@@ -31,6 +32,7 @@ STEP_DISPATCH_TABLE: dict[str, StepExecutor] = {
     "assert_text": execute_assert_text,
     "extract_table": execute_extract_table,
     "download_file": execute_download_file,
+    "prompt_user": execute_prompt_user,
 }
 
 

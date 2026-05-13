@@ -1,7 +1,7 @@
 """System and task prompts for the Mapper agent.
 
 Language: English (ADR-0014 specifies English prompts for Claude for reliability).
-The 9 allowed step types are the canonical set from scraper-runner.md v1.
+The 10 allowed step types are the canonical set from scraper-runner.md v1 + ADR-0021.
 """
 
 ALLOWED_STEP_TYPES = [
@@ -14,6 +14,7 @@ ALLOWED_STEP_TYPES = [
     "assert_text",
     "extract_table",
     "download_file",
+    "prompt_user",
 ]
 
 SYSTEM_PROMPT = """\
@@ -33,7 +34,7 @@ Produce a JSON object with this exact schema:
   "steps": [
     {
       "step_id": "<unique string>",
-      "action": "<one of the 9 allowed types>",
+      "action": "<one of the 10 allowed types>",
       ... (action-specific fields)
     }
   ]
@@ -42,7 +43,7 @@ Produce a JSON object with this exact schema:
 
 ## Allowed step action types
 
-You MUST use ONLY the following 9 action types. Never invent new types.
+You MUST use ONLY the following 10 action types. Never invent new types.
 
 - `navigate`: { url, wait_until }
 - `click`: { selector, nth? }
@@ -53,6 +54,24 @@ You MUST use ONLY the following 9 action types. Never invent new types.
 - `assert_text`: { selector, expected, mode }
 - `extract_table`: { table_selector, column_map, row_filter? }
 - `download_file`: { trigger_selector, expected_mime, expected_extension }
+- `prompt_user`: { selector, question_selector, field_key, cache_answers?, timeout_s? }
+
+## Security question detection (ADR-0021)
+
+Some bank pages show a security question before or during login. These are pages where:
+  - A text element asks a question ending in "?" or using question phrasing.
+  - A small text input (not a password field) is present for the answer.
+
+When you detect such a pattern, emit a `prompt_user` step with:
+  - `action`: "prompt_user"
+  - `selector`: CSS/XPath for the answer input field
+  - `question_selector`: CSS/XPath for the element showing the question text
+  - `field_key`: a stable snake_case identifier for this question type, \
+    e.g. "security_q_mother_color", "security_q_first_pet". \
+    Must match regex ^[a-z][a-z0-9_]{2,32}$. Use a descriptive name based on \
+    the question content, not the selector.
+  - `cache_answers`: true (default — the system will cache the answer after first use)
+  - `timeout_s`: 240 (default)
 
 ## Credential handling
 
@@ -70,16 +89,18 @@ navigation — not on data values.
 
 1. Reach the login page.
 2. Authenticate using the placeholders.
-3. Navigate to the main account dashboard.
-4. For each account listed: navigate to transaction history.
-5. Find and trigger the transaction download (Excel/CSV).
-6. Record the complete sequence as steps.
+3. If a security question is shown, emit a `prompt_user` step.
+4. Navigate to the main account dashboard.
+5. For each account listed: navigate to transaction history.
+6. Find and trigger the transaction download (Excel/CSV).
+7. Record the complete sequence as steps.
 
 ## Quality rules
 
 - Use stable CSS selectors: IDs, data-* attributes, ARIA roles. \
   Avoid nth-child, absolute indexes, or auto-generated class names.
 - Each step must have a unique `step_id`.
+- Each `question_selector` must be unique within the map.
 - If an OTP or 2FA step is required, emit a `wait_for_selector` step for the \
   OTP input field to signal the pause point.
 - When done, emit your result as a `done` action with the complete map JSON \

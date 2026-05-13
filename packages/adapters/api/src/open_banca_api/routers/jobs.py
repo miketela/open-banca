@@ -14,6 +14,7 @@ from open_banca_api.dependencies import (
     get_job_store,
     get_temporal_client,
 )
+from open_banca_api.schemas.jobs import HumanInputRequest
 from open_banca_application.use_cases.get_job_result import GetJobResult, GetJobResultInput
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,71 @@ async def otp_confirmed(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"error": "signal_failed", "message": str(exc)},
         ) from exc
+
+
+@router.post(
+    "/{job_id}/human-input",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Deliver human input for a pending prompt_user step (ADR-0021)",
+    description=(
+        "Resolves a pending prompt_user step by delivering the answer to the workflow. "
+        "Validates field_key regex and answer length/charset (T27a defense). "
+        "Optionally persists the answer in the vault for future cache hits."
+    ),
+)
+async def human_input(
+    job_id: str,
+    body: HumanInputRequest,
+    job_store: Annotated[object, Depends(get_job_store)],
+    orchestrator: Annotated[TemporalOrchestratorAdapter, Depends(get_temporal_client)],
+) -> None:
+    """POST /jobs/{id}/human-input — deliver answer for prompt_user step.
+
+    Validates:
+      - field_key regex ``^[a-z][a-z0-9_]{2,32}$``
+      - answer length ≤ 256 bytes UTF-8
+      - answer charset: no Unicode control/format characters (T27a)
+
+    Returns 204 on success. Signal is delivered to Temporal workflow.
+    """
+    job = job_store.load_job(job_id)  # type: ignore[attr-defined]
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "job_not_found", "job_id": job_id},
+        )
+
+    from open_banca_domain.entities.job import JobStatus
+
+    if job.status != JobStatus.HUMAN_INPUT_REQUIRED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "job_not_awaiting_human_input",
+                "status": str(job.status),
+                "message": "Job is not in 'human_input_required' state.",
+            },
+        )
+
+    try:
+        await orchestrator.async_signal_human_input_provided(
+            job_id=job_id,
+            field_key=body.field_key,
+            answer=body.answer,
+            persist=body.persist,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "signal_failed", "message": str(exc)},
+        ) from exc
+
+    logger.info(
+        "human_input delivered: job_id=%s field_key=%s persist=%s",
+        job_id,
+        body.field_key,
+        body.persist,
+    )
 
 
 @router.post(

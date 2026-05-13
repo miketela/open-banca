@@ -34,6 +34,7 @@ class TestJobStatusEnum:
             "pending",
             "running",
             "otp_required",
+            "human_input_required",
             "resumed",
             "escalated",
             "completed",

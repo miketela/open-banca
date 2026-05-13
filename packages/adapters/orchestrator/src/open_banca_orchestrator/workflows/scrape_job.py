@@ -3,9 +3,10 @@
 Orchestrates the full scraping pipeline per docs/02-components/orchestrator.md.
 
 Signals:
-  otp_confirmed  — POST /jobs/{id}/otp-confirmed — unblocks OTP wait.
-  remap_approved — POST /maps/{bank}/proposals/{id}/approve — resumes after remap.
-  cancel_job     — POST /jobs/{id}/cancel — triggers cleanup and cancellation.
+  otp_confirmed         — POST /jobs/{id}/otp-confirmed — unblocks OTP wait.
+  remap_approved        — POST /maps/{bank}/proposals/{id}/approve — resumes after remap.
+  cancel_job            — POST /jobs/{id}/cancel — triggers cleanup and cancellation.
+  human_input_provided  — POST /jobs/{id}/human-input — delivers answer for prompt_user step.
 
 DETERMINISM RULES — all code in this module MUST follow:
   1. Use workflow.now()     — NOT datetime.now() or time.time()
@@ -51,6 +52,11 @@ with workflow.unsafe.imports_passed_through():
         OTPSignalAwaitInput,
         otp_signal_await,
     )
+    from open_banca_orchestrator.activities.human_input_await import (
+        HumanInputAwaitInput,
+        HumanInputAwaitResult,
+        human_input_await,
+    )
     from open_banca_orchestrator.activities.parse_excel import (
         ParseExcelInput,
         ParserConfig,
@@ -94,6 +100,7 @@ _RETRY_VALIDATE = RetryPolicy(
 )
 
 _RETRY_OTP = RetryPolicy(maximum_attempts=1)  # no retry — hard cap via timeout
+_RETRY_HUMAN_INPUT = RetryPolicy(maximum_attempts=1)  # no retry — hard cap via timeout_s
 
 _RETRY_WEBHOOK = RetryPolicy(
     initial_interval=datetime.timedelta(seconds=5),
@@ -184,6 +191,10 @@ class ScrapeJobWorkflow:
         self._remap_approved_proposal_id: str | None = None
         self._cancelled: bool = False
         self._cancel_reason: str = ""
+        # human_input_provided signal state (ADR-0021)
+        self._human_input_field_key: str | None = None
+        self._human_input_answer: str | None = None
+        self._human_input_persist: bool = True
 
     # -----------------------------------------------------------------------
     # Signal handlers
@@ -222,6 +233,27 @@ class ScrapeJobWorkflow:
         self._cancelled = True
         self._cancel_reason = reason
 
+    @workflow.signal(name="human_input_provided")
+    async def signal_human_input_provided(
+        self,
+        field_key: str,
+        answer: str,
+        persist: bool = True,
+    ) -> None:
+        """Signal: POST /jobs/{id}/human-input.
+
+        Unblocks the workflow.wait_condition() in the human-input wait section.
+        Carries the answer payload — distinct from otp_confirmed which is payload-less.
+
+        Args:
+            field_key: Matches the field_key in the pending prompt_user step.
+            answer: The plaintext answer provided by the operator.
+            persist: Whether to cache the answer in the security_q vault namespace.
+        """
+        self._human_input_field_key = field_key
+        self._human_input_answer = answer
+        self._human_input_persist = persist
+
     # -----------------------------------------------------------------------
     # Queries
     # -----------------------------------------------------------------------
@@ -235,6 +267,8 @@ class ScrapeJobWorkflow:
         if self._cancelled:
             return "cancelled"
         if self._otp_confirmed:
+            return "resumed"
+        if self._human_input_answer is not None:
             return "resumed"
         return "running"
 

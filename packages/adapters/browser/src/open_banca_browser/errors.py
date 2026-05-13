@@ -66,3 +66,33 @@ class ValueNotResolved(ScraperError):
     """Raised when a value_ref cannot be resolved from the secret vault."""
 
     error_class = "value_not_resolved"
+
+
+class HumanInputRequired(Exception):
+    """Raised by the prompt_user executor when vault cache misses and user input is needed.
+
+    This is NOT a ScraperError / BreakageEvent — it is a normal mid-scrape pause.
+    The Temporal activity catches this and transitions the job to
+    ``human_input_required`` state, emitting the ``job.human_input_required`` webhook.
+
+    Distinction from BreakageEvent:
+        - BreakageEvent → unexpected failure, triggers Judge evaluation.
+        - HumanInputRequired → expected pause, resolved via POST /jobs/{id}/human-input.
+
+    Metrics: emit ``prompt_user_paused`` counter, NOT ``scraper_breakage``.
+    """
+
+    def __init__(
+        self,
+        question_text: str,
+        field_key: str,
+        question_hash: str,
+        selector: str,
+        timeout_s: int = 240,
+    ) -> None:
+        super().__init__(f"Human input required for field_key={field_key!r}")
+        self.question_text = question_text
+        self.field_key = field_key
+        self.question_hash = question_hash
+        self.selector = selector
+        self.timeout_s = timeout_s

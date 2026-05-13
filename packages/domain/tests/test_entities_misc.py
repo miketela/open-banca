@@ -193,7 +193,7 @@ class TestWebhookEvent:
         ev = WebhookEvent(**self._valid())
         assert ev.event_type == WebhookEventType.JOB_CREATED
 
-    def test_all_7_event_types_present(self) -> None:
+    def test_all_8_event_types_present(self) -> None:
         expected = {
             "job.created",
             "job.otp_required",
@@ -202,6 +202,7 @@ class TestWebhookEvent:
             "job.failed",
             "job.remap_proposed",
             "job.human_required",
+            "job.human_input_required",
         }
         actual = {e.value for e in WebhookEventType}
         assert actual == expected

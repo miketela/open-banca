@@ -1,21 +1,28 @@
 """Activity definitions for open-banca Temporal workflows.
 
-All 10 canonical activities from docs/02-components/orchestrator.md, plus
+All 11 canonical activities from docs/02-components/orchestrator.md, plus
 placeholder stubs for activities implemented in future tasks.
 
 Activity inventory (orchestrator.md §Inventario):
-  LoginActivity          — exp backoff, 2 attempts, 90s start-to-close, 10s heartbeat
-  OTPSignalAwaitActivity — no retry, 4min start-to-close, 15s heartbeat (ADR-0019)
-  NavigateActivity       — exp backoff, 3 attempts, 30s start-to-close, 5s heartbeat
-  DownloadExcelActivity  — exp backoff, 3 attempts, 2min start-to-close, 10s heartbeat
-  ParseExcelActivity     — 1 attempt (deterministic), 60s start-to-close, threadpool
-  ValidateActivity       — 2 attempts, 60s start-to-close    (PLACEHOLDER — task 19)
-  JudgeActivity          — 1 attempt, 30s start-to-close      (PLACEHOLDER — task 19)
-  MapperAgentActivity    — no retry, 20min start-to-close, 30s heartbeat  (task 14)
-  RemapperAgentActivity  — no retry, 15min start-to-close, 30s heartbeat  (task 20)
-  EmitWebhookActivity    — exp backoff, 5 attempts, 10s start-to-close, max 1h
+  LoginActivity             — exp backoff, 2 attempts, 90s start-to-close, 10s heartbeat
+  OTPSignalAwaitActivity    — no retry, 4min start-to-close, 15s heartbeat (ADR-0019)
+  HumanInputAwaitActivity   — no retry, timeout_s+30s start-to-close, 15s heartbeat (ADR-0021)
+  NavigateActivity          — exp backoff, 3 attempts, 30s start-to-close, 5s heartbeat
+  DownloadExcelActivity     — exp backoff, 3 attempts, 2min start-to-close, 10s heartbeat
+  ParseExcelActivity        — 1 attempt (deterministic), 60s start-to-close, threadpool
+  ValidateActivity          — 2 attempts, 60s start-to-close    (PLACEHOLDER — task 19)
+  JudgeActivity             — 1 attempt, 30s start-to-close      (PLACEHOLDER — task 19)
+  MapperAgentActivity       — no retry, 20min start-to-close, 30s heartbeat  (task 14)
+  RemapperAgentActivity     — no retry, 15min start-to-close, 30s heartbeat  (task 20)
+  EmitWebhookActivity       — exp backoff, 5 attempts, 10s start-to-close, max 1h
 """
 
+from open_banca_orchestrator.activities.human_input_await import (
+    HumanInputAwaitActivity,
+    HumanInputAwaitInput,
+    HumanInputAwaitResult,
+    human_input_await,
+)
 from open_banca_orchestrator.activities.download_excel import (
     DownloadExcelActivity,
     DownloadExcelInput,
@@ -83,6 +90,11 @@ __all__ = [
     "LoginInput",
     "LoginResult",
     "login",
+    # Human input await (ADR-0021)
+    "HumanInputAwaitActivity",
+    "HumanInputAwaitInput",
+    "HumanInputAwaitResult",
+    "human_input_await",
     # OTP await
     "OTPSignalAwaitActivity",
     "OTPSignalAwaitInput",

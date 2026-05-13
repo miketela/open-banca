@@ -133,6 +133,23 @@ class TemporalOrchestratorAdapter:
         await handle.signal("remap_rejected", "operator_rejected")
         logger.info("Sent remap_rejected signal: proposal_id=%s", proposal_id)
 
+    async def async_signal_human_input_provided(
+        self,
+        job_id: str,
+        field_key: str,
+        answer: str,
+        persist: bool,
+    ) -> None:
+        """Send human_input_provided signal to a running workflow (ADR-0021)."""
+        handle = self._client.get_workflow_handle(job_id)  # type: ignore[attr-defined]
+        await handle.signal("human_input_provided", field_key, answer, persist)
+        logger.info(
+            "Sent human_input_provided signal: job_id=%s field_key=%s persist=%s",
+            job_id,
+            field_key,
+            persist,
+        )
+
     async def async_cancel_job(self, job_id: str) -> None:
         """Cancel a running workflow."""
         handle = self._client.get_workflow_handle(job_id)  # type: ignore[attr-defined]
