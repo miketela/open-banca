@@ -1,4 +1,4 @@
-"""community/linter.py — MapLinter: 14-rule static validator for community bank maps.
+"""community/linter.py — MapLinter: 15-rule static validator for community bank maps.
 
 Rules implemented
 -----------------
@@ -17,6 +17,9 @@ L12  download_file steps: expected_content_type must reference allowed extension
      (.xlsx, .xls, .csv) or selector must only match those extensions.
 L13  Re2 compile check (T15 addition — explicit per ADR-0007-amendment).
 L14  lookup_table per-map size ≤ 1 MB serialised (T15 addition — per-map cap).
+L15  prompt_user steps: question_selector non-null, field_key valid regex
+     (^[a-z][a-z0-9_]{2,32}$), selector non-null, and question_selector unique
+     within the map (ADR-0021).
 
 CLI usage::
 
@@ -110,15 +113,18 @@ class LintResult:
 # ---------------------------------------------------------------------------
 
 
+_FIELD_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{2,32}$")
+
+
 class MapLinter:
     """Static security linter for community bank maps.
 
-    Runs 14 rules over a bank directory containing map.json and parser.json.
+    Runs 15 rules over a bank directory containing map.json and parser.json.
     Never loads arbitrary Python; all validation is Pydantic + static analysis.
     """
 
     def lint(self, bank_dir: Path) -> LintResult:
-        """Run all 14 rules against *bank_dir*.
+        """Run all 15 rules against *bank_dir*.
 
         Args:
             bank_dir: Path to a bank directory containing map.json and parser.json.
@@ -152,6 +158,7 @@ class MapLinter:
             self._check_l06_url_whitelist(bank_map, result)
             self._check_l07_max_steps(bank_map, result)
             self._check_l12_download_extensions(bank_map, result)
+            self._check_l15_prompt_user(bank_map, result)
 
         # Rules over parser.json
         if parser_spec is not None:
@@ -487,6 +494,73 @@ class MapLinter:
                 )
 
 
+    # ------------------------------------------------------------------
+    # L15 — prompt_user step validation (ADR-0021)
+    # ------------------------------------------------------------------
+
+    def _check_l15_prompt_user(self, bank_map: BankMap, result: LintResult) -> None:
+        """L15: validate all prompt_user steps.
+
+        Checks:
+          1. ``question_selector`` is present and non-empty.
+          2. ``field_key`` matches regex ``^[a-z][a-z0-9_]{2,32}$``.
+          3. ``selector`` (answer input) is present and non-empty.
+          4. ``question_selector`` values are unique within the map (prevent cross-contamination).
+        """
+        seen_question_selectors: dict[str, str] = {}  # question_selector → first step_id
+
+        for step in bank_map.steps:
+            if step.action != "prompt_user":
+                continue
+
+            extra = step.model_extra or {}
+            question_selector: str = extra.get("question_selector", "") or ""
+            field_key: str = extra.get("field_key", "") or ""
+            answer_selector: str = extra.get("selector", step.target or "") or ""
+
+            if not question_selector:
+                result.add(
+                    "L15",
+                    f"Step {step.step_id!r}: prompt_user requires non-empty "
+                    "``question_selector`` field (ADR-0021)",
+                )
+
+            if not field_key:
+                result.add(
+                    "L15",
+                    f"Step {step.step_id!r}: prompt_user requires non-empty "
+                    "``field_key`` field (ADR-0021)",
+                )
+            elif not _FIELD_KEY_RE.match(field_key):
+                result.add(
+                    "L15",
+                    f"Step {step.step_id!r}: prompt_user field_key {field_key!r} "
+                    r"must match ^[a-z][a-z0-9_]{2,32}$ "
+                    "(ADR-0021 — lowercase letters, digits, underscores, 3-33 chars)",
+                )
+
+            if not answer_selector:
+                result.add(
+                    "L15",
+                    f"Step {step.step_id!r}: prompt_user requires non-empty "
+                    "``selector`` field for the answer input (ADR-0021)",
+                )
+
+            # Uniqueness check for question_selector within this map
+            if question_selector:
+                if question_selector in seen_question_selectors:
+                    result.add(
+                        "L15",
+                        f"Step {step.step_id!r}: prompt_user question_selector "
+                        f"{question_selector!r} duplicates step "
+                        f"{seen_question_selectors[question_selector]!r} — "
+                        "each question_selector must be unique within a map to prevent "
+                        "cache key collisions (ADR-0021)",
+                    )
+                else:
+                    seen_question_selectors[question_selector] = step.step_id
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point  (python -m open_banca_parsing.community.linter <bank_dir>)
 # ---------------------------------------------------------------------------
@@ -495,7 +569,7 @@ class MapLinter:
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m open_banca_parsing.community.linter",
-        description="Run the 14-rule community map linter against a bank directory.",
+        description="Run the 15-rule community map linter against a bank directory.",
     )
     p.add_argument(
         "bank_dir",

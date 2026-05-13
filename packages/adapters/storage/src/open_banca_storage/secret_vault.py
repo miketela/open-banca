@@ -1,7 +1,23 @@
 """SecretVault — AES-GCM per-row encrypted credential store.
 
 Implements ``SecretStorePort`` (domain port).  Stores bank credentials
-encrypted at rest using a two-layer scheme (per ADR-0008):
+encrypted at rest using a two-layer scheme (per ADR-0008).
+
+Also exposes a ``security_q`` namespace (ADR-0021) for caching answers to
+bank security questions used by the ``prompt_user`` step type.  The crypto
+scheme is identical to credentials: per-row Argon2id KDF + AES-GCM, with the
+answer plaintext never appearing in logs, OTel spans, or audit entries.
+
+``security_answers`` table schema (from ``003_security_answers.sql``):
+    credential_id   TEXT  (FK to credentials.id)
+    question_hash   TEXT  (sha256 hex of the cache_key)
+    field_key       TEXT  (stable human-readable key, e.g. security_q_mother_color)
+    ciphertext      BLOB  (AES-GCM ciphertext)
+    nonce           BLOB  (12-byte random nonce)
+    kdf_meta        TEXT  (JSON: {salt_hex, time_cost, memory_cost, parallelism})
+    created_at      TEXT  (UTC ISO-8601)
+    expires_at      TEXT  (UTC ISO-8601)
+    last_used_at    TEXT  (UTC ISO-8601, NULL until first hit)
 
     1. SQLCipher AES-256-CBC encrypts the entire database file (via
        ``Argon2idKeyDerivation`` in ``ConnectionPool``).
@@ -38,7 +54,7 @@ import os
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -49,6 +65,24 @@ from open_banca_storage.connection import ConnectionPool
 from open_banca_storage.kdf import Argon2idKeyDerivation, derive_row_key, wipe_row_key
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_SECURITY_ANSWER_TTL_DAYS: int = 90
+
+
+@dataclass(frozen=True)
+class QuestionMeta:
+    """Metadata for a cached security answer — no plaintext.
+
+    Returned by :meth:`SecretVault.list_security_questions`.
+    """
+
+    credential_id: str
+    question_hash: str
+    field_key: str
+    created_at: str
+    expires_at: str
+    last_used_at: str | None
 
 
 @dataclass(frozen=True)
@@ -66,10 +100,15 @@ class CredentialSummary:
 
 # Additional authenticated data bound to ciphertext (prevents cross-row replay).
 _AAD_PREFIX = b"open_banca:vault:v1:"
+_AAD_SECURITY_Q_PREFIX = b"open_banca:security_q:v1:"
 
 
 def _make_aad(cred_id: str) -> bytes:
     return _AAD_PREFIX + cred_id.encode("utf-8")
+
+
+def _make_security_q_aad(credential_id: str, question_hash: str) -> bytes:
+    return _AAD_SECURITY_Q_PREFIX + credential_id.encode("utf-8") + b":" + question_hash.encode("utf-8")
 
 
 def _now_utc() -> str:
@@ -293,6 +332,239 @@ class SecretVault:
             "master",
             {"rows_count": len(updates), "operator_id": operator_id},
         )
+
+    # ------------------------------------------------------------------
+    # security_q namespace — ADR-0021
+    # ------------------------------------------------------------------
+
+    def store_security_answer(
+        self,
+        credential_id: str,
+        question_hash: str,
+        answer: str,
+        *,
+        field_key: str = "security_q",
+        ttl_days: int | None = None,
+    ) -> None:
+        """Encrypt *answer* with AES-GCM and upsert into security_answers table.
+
+        Args:
+            credential_id: The credential UUID (references credentials.id).
+            question_hash: SHA-256 hex of the cache key (bank_id:credential_ref:field_key:normalized_question).
+            answer: The plaintext answer — wiped from memory after encryption.
+            field_key: Human-readable key identifying what is being asked (default ``"security_q"``).
+            ttl_days: TTL in days. Defaults to ``BANCA_HUMAN_INPUT_TTL_DAYS`` env var or 90.
+
+        Security: answer plaintext NEVER appears in logs or audit entries.
+        """
+        effective_ttl = ttl_days if ttl_days is not None else int(
+            os.environ.get("BANCA_HUMAN_INPUT_TTL_DAYS", str(_DEFAULT_SECURITY_ANSWER_TTL_DAYS))
+        )
+
+        salt = secrets.token_bytes(16)
+        nonce = secrets.token_bytes(12)
+        answer_bytes = answer.encode("utf-8")
+        aad = _make_security_q_aad(credential_id, question_hash)
+
+        row_key = derive_row_key(bytes(self._master), salt)
+        try:
+            ciphertext = AESGCM(bytes(row_key)).encrypt(nonce, answer_bytes, aad)
+        finally:
+            wipe_row_key(row_key)
+
+        # Zeroize plaintext bytes as best effort
+        answer_ba = bytearray(answer_bytes)
+        for i in range(len(answer_ba)):
+            answer_ba[i] = 0
+
+        kdf_meta = json.dumps({
+            "salt_hex": salt.hex(),
+            "time_cost": 3,
+            "memory_cost": 262_144,
+            "parallelism": 4,
+        })
+        now = datetime.now(UTC)
+        expires_at = (now + timedelta(days=effective_ttl)).isoformat()
+
+        conn = self._pool.get()
+        conn.execute(
+            """
+            INSERT INTO security_answers
+                (credential_id, question_hash, field_key, ciphertext, nonce, kdf_meta,
+                 created_at, expires_at, last_used_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(credential_id, question_hash) DO UPDATE SET
+                field_key    = excluded.field_key,
+                ciphertext   = excluded.ciphertext,
+                nonce        = excluded.nonce,
+                kdf_meta     = excluded.kdf_meta,
+                created_at   = excluded.created_at,
+                expires_at   = excluded.expires_at,
+                last_used_at = NULL
+            """,
+            (credential_id, question_hash, field_key, ciphertext, nonce, kdf_meta,
+             now.isoformat(), expires_at),
+        )
+        conn.commit()
+
+        self._audit(
+            "security_q_stored",
+            "security_answer",
+            f"{credential_id}:{question_hash[:8]}",
+            {"field_key": field_key, "ttl_days": effective_ttl, "question_hash_prefix": question_hash[:8]},
+        )
+
+    def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None:
+        """Decrypt and return the cached answer for *question_hash*, or ``None`` on miss.
+
+        Checks TTL: if expires_at < now, treats as miss (does not delete — let purge handle it).
+        Updates ``last_used_at`` on hit.
+
+        Returns:
+            Plaintext answer string on cache hit, or ``None`` on miss / expiry.
+
+        Security: answer plaintext NEVER appears in logs or audit entries.
+        """
+        conn = self._pool.get()
+        row = conn.execute(
+            """
+            SELECT field_key, ciphertext, nonce, kdf_meta, expires_at
+            FROM security_answers
+            WHERE credential_id = ? AND question_hash = ?
+            """,
+            (credential_id, question_hash),
+        ).fetchone()
+
+        hit_or_miss = "miss"
+
+        if row is None:
+            self._audit(
+                "security_q_lookup",
+                "security_answer",
+                f"{credential_id}:{question_hash[:8]}",
+                {"hit_or_miss": "miss", "reason": "not_found", "question_hash_prefix": question_hash[:8]},
+            )
+            return None
+
+        field_key, ciphertext, nonce, kdf_meta_json, expires_at_str = row
+        now = datetime.now(UTC)
+        expires_at = datetime.fromisoformat(expires_at_str)
+
+        if expires_at.tzinfo is None:
+            # Ensure timezone-aware comparison
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        if now > expires_at:
+            self._audit(
+                "security_q_lookup",
+                "security_answer",
+                f"{credential_id}:{question_hash[:8]}",
+                {"hit_or_miss": "miss", "reason": "expired", "question_hash_prefix": question_hash[:8]},
+            )
+            return None
+
+        kdf_meta: dict[str, Any] = json.loads(kdf_meta_json)
+        salt = bytes.fromhex(kdf_meta["salt_hex"])
+        aad = _make_security_q_aad(credential_id, question_hash)
+
+        row_key = derive_row_key(bytes(self._master), salt)
+        try:
+            plaintext_bytes = AESGCM(bytes(row_key)).decrypt(nonce, bytes(ciphertext), aad)
+        finally:
+            wipe_row_key(row_key)
+
+        plaintext = plaintext_bytes.decode("utf-8")
+
+        # Update last_used_at
+        try:
+            conn.execute(
+                "UPDATE security_answers SET last_used_at = ? WHERE credential_id = ? AND question_hash = ?",
+                (now.isoformat(), credential_id, question_hash),
+            )
+            conn.commit()
+        except Exception:
+            logger.warning("vault: failed to update last_used_at for security_q lookup")
+
+        hit_or_miss = "hit"
+        self._audit(
+            "security_q_lookup",
+            "security_answer",
+            f"{credential_id}:{question_hash[:8]}",
+            {"hit_or_miss": hit_or_miss, "field_key": field_key, "question_hash_prefix": question_hash[:8]},
+        )
+        return plaintext
+
+    def invalidate_security_answer(self, credential_id: str, question_hash: str, reason: str = "manual") -> None:
+        """Delete a cached security answer and record a tombstone audit entry.
+
+        Args:
+            credential_id: The credential UUID.
+            question_hash: SHA-256 hex of the cache key.
+            reason: Human-readable reason (e.g. ``"assertion_failed"``, ``"manual"``).
+        """
+        conn = self._pool.get()
+        conn.execute(
+            "DELETE FROM security_answers WHERE credential_id = ? AND question_hash = ?",
+            (credential_id, question_hash),
+        )
+        conn.commit()
+
+        self._audit(
+            "security_q_invalidated",
+            "security_answer",
+            f"{credential_id}:{question_hash[:8]}",
+            {"reason": reason, "question_hash_prefix": question_hash[:8]},
+        )
+
+    def list_security_questions(self, credential_id: str) -> list[QuestionMeta]:
+        """Return metadata for all cached security answers for *credential_id* — no plaintext.
+
+        Only returns non-expired entries.
+        """
+        conn = self._pool.get()
+        now = datetime.now(UTC).isoformat()
+        rows = conn.execute(
+            """
+            SELECT credential_id, question_hash, field_key, created_at, expires_at, last_used_at
+            FROM security_answers
+            WHERE credential_id = ? AND expires_at > ?
+            ORDER BY created_at
+            """,
+            (credential_id, now),
+        ).fetchall()
+        return [
+            QuestionMeta(
+                credential_id=r[0],
+                question_hash=r[1],
+                field_key=r[2],
+                created_at=r[3],
+                expires_at=r[4],
+                last_used_at=r[5],
+            )
+            for r in rows
+        ]
+
+    def purge_expired_security_answers(self) -> int:
+        """Delete all expired security_answers rows.
+
+        Returns:
+            Count of deleted rows.
+        """
+        conn = self._pool.get()
+        now = datetime.now(UTC).isoformat()
+        cursor = conn.execute(
+            "DELETE FROM security_answers WHERE expires_at <= ?",
+            (now,),
+        )
+        count = cursor.rowcount
+        conn.commit()
+        self._audit(
+            "security_q_purge",
+            "security_answer",
+            "all",
+            {"count": count},
+        )
+        return count
 
     # ------------------------------------------------------------------
     # Private helpers

@@ -275,6 +275,64 @@ class FakeChatModel:
         return ChatInvokeCompletion(completion=raw, usage=usage, stop_reason="end_turn")
 
 
+# ── CLI interactive prompt for security question pre-load (ADR-0021) ─────────
+
+
+def interactive_prompt(
+    bank_id: str,
+    field_key: str,
+    question_selector: str,
+    prompt_fn: Any | None = None,
+) -> str | None:
+    """Prompt operator in terminal for a security question answer (supervised CLI mode).
+
+    Implements the "Pre-load via Mapper CLI" flow from mapper-agent.md §Security question
+    detection (ADR-0021).
+
+    Args:
+        bank_id: Bank identifier for context.
+        field_key: Suggested field key for this question.
+        question_selector: CSS/XPath selector of the question element (for operator context).
+        prompt_fn: Override the prompt function (used in tests to mock typer.prompt).
+                   If None, uses typer.prompt (falling back to input() if typer unavailable).
+
+    Returns:
+        The answer string, or None if the operator skipped.
+    """
+    if prompt_fn is None:
+        try:
+            import typer  # type: ignore[import-untyped]
+            prompt_fn = lambda msg, **kw: typer.prompt(msg, **kw)  # noqa: E731
+        except ImportError:
+            prompt_fn = lambda msg, **kw: input(f"{msg}: ")  # noqa: E731
+
+    print(f"\n[Mapper] Detectada pregunta de seguridad (bank_id={bank_id}):")
+    print(f"   field_key sugerido: {field_key}")
+    print(f"   question_selector: {question_selector}")
+
+    try:
+        confirm = prompt_fn(
+            "¿Quieres pre-cargar la respuesta al vault ahora? (Y/n)",
+            default="Y",
+        )
+        if str(confirm).strip().lower() in {"n", "no"}:
+            return None
+
+        answer = prompt_fn(
+            f"answer para '{field_key}' (oculto)",
+            hide_input=True,
+            default="",
+        )
+        if not answer:
+            logger.warning("interactive_prompt: empty answer for field_key=%s — skipping", field_key)
+            return None
+
+        return str(answer)
+    except (KeyboardInterrupt, EOFError):
+        logger.info("interactive_prompt: interrupted for field_key=%s — skipping", field_key)
+        return None
+
+
 # ── MapperAgent ───────────────────────────────────────────────────────────────
 
 
@@ -290,6 +348,9 @@ class MapperAgent:
         llm_override: Inject a custom BaseChatModel (tests pass FakeChatModel here).
         max_steps: Maximum browser-use agent steps (default 50).
         start_url_map: Optional dict mapping bank_id → start URL.
+        interactive: If True and vault is provided, prompt operator in CLI for security
+                     question answers (ADR-0021 pre-load path). Default False.
+        vault: SecretVault instance for pre-loading security answers. Optional.
     """
 
     def __init__(
@@ -303,6 +364,8 @@ class MapperAgent:
         llm_override: Any | None = None,
         max_steps: int = 50,
         start_url_map: dict[str, str] | None = None,
+        interactive: bool = False,
+        vault: Any | None = None,
     ) -> None:
         self._model_name = model
         self._cost_cap = cost_cap_usd
@@ -312,6 +375,8 @@ class MapperAgent:
         self._llm_override = llm_override
         self._max_steps = max_steps
         self._start_url_map = start_url_map or {}
+        self._interactive = interactive
+        self._vault = vault
 
     def _build_llm(self, tracker: CostTracker) -> CostTrackingChatModel:
         """Build the wrapped LLM chain: ChatLiteLLM → PIIRedact → CostTracking.
@@ -399,6 +464,14 @@ class MapperAgent:
 
         bank_map = self._parse_bank_map(map_json_str, bank_id)
 
+        # Security question detection (ADR-0021): if the map contains prompt_user
+        # steps and a vault + credential_ref are provided, offer CLI preload.
+        bank_map = await self._handle_security_question_preload(
+            bank_map=bank_map,
+            bank_id=bank_id,
+            credential_ref=credential_ref,
+        )
+
         # Self-test: dry-run ScraperRunner over the generated map
         await self._self_test(bank_map)
 
@@ -408,6 +481,98 @@ class MapperAgent:
             len(bank_map.steps),
             tracker.usage.cost_usd,
         )
+        return bank_map
+
+    async def _handle_security_question_preload(
+        self,
+        bank_map: BankMap,
+        bank_id: str,
+        credential_ref: str,
+    ) -> BankMap:
+        """Offer CLI preload of security question answers when running supervised (ADR-0021).
+
+        When the Mapper runs in CLI / supervised mode (``_interactive`` flag), and
+        the generated map contains ``prompt_user`` steps, prompt the operator in
+        terminal for each security question answer. Writes answers to the vault so
+        the first autonomous scrape job finds cache hits.
+
+        In autonomous mode (no vault, no interactive flag), returns the map unchanged.
+        The runtime will handle the miss via HumanInputAwaitActivity.
+
+        Args:
+            bank_map: The generated BankMap (may contain prompt_user steps).
+            bank_id: Bank identifier.
+            credential_ref: Vault reference for the credential.
+
+        Returns:
+            The same BankMap (possibly with cache_answers=True added to prompt_user steps).
+        """
+        prompt_user_steps = [s for s in bank_map.steps if s.action == "prompt_user"]
+
+        if not prompt_user_steps:
+            return bank_map
+
+        if not self._interactive or self._vault is None:
+            logger.info(
+                "MapperAgent: %d prompt_user step(s) detected for bank_id=%s. "
+                "Running non-interactively — answers will be requested at runtime.",
+                len(prompt_user_steps),
+                bank_id,
+            )
+            return bank_map
+
+        # Interactive supervised mode: prompt operator for each security question
+        logger.info(
+            "MapperAgent: %d security question(s) detected — CLI preload mode (ADR-0021)",
+            len(prompt_user_steps),
+        )
+
+        for step in prompt_user_steps:
+            extra = step.model_extra or {}
+            field_key: str = extra.get("field_key", step.step_id)
+            question_selector: str = extra.get("question_selector", "")
+
+            answer = interactive_prompt(
+                bank_id=bank_id,
+                field_key=field_key,
+                question_selector=question_selector,
+            )
+            if answer is None:
+                logger.info(
+                    "MapperAgent: operator skipped preload for field_key=%s", field_key
+                )
+                continue
+
+            # Compute cache key (bank_id:credential_ref:field_key:normalize(question_text))
+            # In CLI preload, we don't have the live question text — use field_key as proxy.
+            # The hash will differ from runtime (which uses live DOM text), so this is
+            # a best-effort preload. Runtime will still cache on first real hit.
+            from open_banca_browser.step_executors.prompt_user import compute_question_hash  # noqa: PLC0415
+
+            question_hash = compute_question_hash(
+                bank_id=bank_id,
+                credential_id=credential_ref,
+                field_key=field_key,
+                question_text=field_key,  # placeholder — real text resolved at runtime
+            )
+
+            try:
+                self._vault.store_security_answer(
+                    credential_id=credential_ref,
+                    question_hash=question_hash,
+                    answer=answer,
+                    field_key=field_key,
+                )
+                logger.info(
+                    "MapperAgent: preloaded vault answer for field_key=%s", field_key
+                )
+            except Exception as exc:
+                logger.warning(
+                    "MapperAgent: failed to preload vault for field_key=%s: %s",
+                    field_key,
+                    exc,
+                )
+
         return bank_map
 
     async def _run_stub(

@@ -13,6 +13,7 @@ class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     OTP_REQUIRED = "otp_required"
+    HUMAN_INPUT_REQUIRED = "human_input_required"
     RESUMED = "resumed"
     ESCALATED = "escalated"
     COMPLETED = "completed"
