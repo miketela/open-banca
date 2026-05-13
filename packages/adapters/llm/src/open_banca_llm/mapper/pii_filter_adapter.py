@@ -88,6 +88,11 @@ class PIIRedactingChatModel:
         return self._inner.model
 
     @property
+    def model_name(self) -> str:
+        """Proxy attribute required by browser-use telemetry."""
+        return getattr(self._inner, "model_name", self._inner.model)
+
+    @property
     def provider(self) -> str:
         return self._inner.provider  # type: ignore[attr-defined]
 
