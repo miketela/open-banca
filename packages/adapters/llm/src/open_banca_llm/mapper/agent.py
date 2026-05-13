@@ -392,9 +392,17 @@ class MapperAgent:
         if self._llm_override is not None:
             inner: Any = self._llm_override
         else:
-            from browser_use.llm.litellm.chat import ChatLiteLLM  # type: ignore[import-untyped]
+            # Native ChatAnthropic instead of ChatLiteLLM: LiteLLM's tool-schema
+            # translation triggers Anthropic "compiled grammar too large" with
+            # browser-use's full action set. Native client avoids strict-mode.
+            import os as _os
+            from browser_use.llm.anthropic.chat import ChatAnthropic  # type: ignore[import-untyped]
 
-            inner = ChatLiteLLM(model=self._model_name)
+            _anth_model = self._model_name.split("/", 1)[-1]
+            inner = ChatAnthropic(
+                model=_anth_model,
+                api_key=_os.environ.get("ANTHROPIC_API_KEY", ""),
+            )
 
         pii_wrapped = PIIRedactingChatModel(
             inner=inner,
