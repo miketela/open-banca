@@ -56,22 +56,91 @@ You MUST use ONLY the following 10 action types. Never invent new types.
 - `download_file`: { trigger_selector, expected_mime, expected_extension }
 - `prompt_user`: { selector, question_selector, field_key, cache_answers?, timeout_s? }
 
-## Security question detection (ADR-0021)
+## Distinguishing PASSWORD vs SECURITY QUESTION vs USERNAME (CRITICAL — ADR-0021)
 
-Some bank pages show a security question before or during login. These are pages where:
-  - A text element asks a question ending in "?" or using question phrasing.
-  - A small text input (not a password field) is present for the answer.
+Bank login flows in Panama frequently use THREE separate text inputs across screens.
+DO NOT confuse them — wrong placeholder = login lockout.
 
-When you detect such a pattern, emit a `prompt_user` step with:
-  - `action`: "prompt_user"
-  - `selector`: CSS/XPath for the answer input field
-  - `question_selector`: CSS/XPath for the element showing the question text
-  - `field_key`: a stable snake_case identifier for this question type, \
-    e.g. "security_q_mother_color", "security_q_first_pet". \
-    Must match regex ^[a-z][a-z0-9_]{2,32}$. Use a descriptive name based on \
-    the question content, not the selector.
-  - `cache_answers`: true (default — the system will cache the answer after first use)
-  - `timeout_s`: 240 (default)
+### Heuristics — apply in this order
+
+1. **PASSWORD field** → emit `fill` step with `value_ref: "<PASSWORD>"`
+   Signals: `<input type="password">`, `autocomplete="current-password"`, \
+   `name`/`id` contains: password, passwd, pwd, contrasena, contraseña, clave, pass.
+   Visual: dots/asterisks instead of typed chars.
+   NEVER a security answer goes here.
+
+2. **USERNAME field** → emit `fill` step with `value_ref: "<USERNAME>"`
+   Signals: `<input type="text"|"email">`, `autocomplete="username"`, \
+   `name`/`id` contains: user, username, usuario, login, email, cedula, document, ruc.
+   Usually the FIRST input on the login page. Single line.
+
+3. **SECURITY QUESTION** → emit `prompt_user` step (NOT `fill`).
+   Signals (ALL must be true):
+     a. There is a nearby label/text node containing a question. Question patterns:
+        - Starts with "¿" or contains "?"
+        - Spanish question words: "Cuál", "Cómo", "Qué", "Cuándo", "Dónde", \
+          "Quién", "Cuántos". English: "What", "Which", "When", "Where", "Who".
+        - Common BG/PA phrasings: \
+          "¿Cuál es el apodo de…?", \
+          "¿Cuál es tu materia favorita?", \
+          "¿Cuál es el nombre de tu primera mascota?", \
+          "¿En qué ciudad nació tu madre?", \
+          "¿Cuál es el segundo apellido de tu padre?".
+     b. The input is `<input type="text">` (NOT type="password").
+     c. The input is typically AFTER username+password OR on a separate \
+        post-credentials screen. If you see a question label adjacent to a \
+        text input that is NOT the username field, it is a security question.
+
+### Few-shot examples (real DOM patterns)
+
+**Example A — security question (Banco General style):**
+```html
+<div class="login-step">
+  <label>¿Cuál es el apodo de tu abuelo?</label>
+  <input type="text" id="securityAnswer" name="answer" autocomplete="off">
+  <button>Continuar</button>
+</div>
+```
+→ Correct step:
+```json
+{
+  "step_id": "answer_security_q_grandpa_nickname",
+  "action": "prompt_user",
+  "selector": "#securityAnswer",
+  "question_selector": ".login-step label",
+  "field_key": "security_q_grandpa_nickname",
+  "cache_answers": true,
+  "timeout_s": 240
+}
+```
+
+**Example B — security question (alternate phrasing):**
+```html
+<p class="question-text">¿Cuál es tu materia favorita?</p>
+<input type="text" id="answer-input" autocomplete="off">
+```
+→ `prompt_user` with `selector: "#answer-input"`, `question_selector: ".question-text"`, `field_key: "security_q_favorite_subject"`.
+
+**Example C — password (DO NOT use prompt_user):**
+```html
+<input type="password" name="contrasena" autocomplete="current-password">
+```
+→ `fill` step with `value_ref: "<PASSWORD>"`. NEVER `prompt_user`.
+
+**Example D — username (DO NOT use prompt_user):**
+```html
+<input type="text" name="usuario" autocomplete="username">
+```
+→ `fill` step with `value_ref: "<USERNAME>"`. NEVER `prompt_user`.
+
+### `field_key` naming
+
+Must match regex `^[a-z][a-z0-9_]{2,32}$`. Examples (good):
+`security_q_grandpa_nickname`, `security_q_favorite_subject`, `security_q_first_pet`, \
+`security_q_mother_birth_city`, `security_q_father_second_lastname`.
+
+Name based on the QUESTION CONTENT, not the DOM. Two different questions = two \
+different field_keys. The system caches answers per field_key.
 
 ## Credential handling
 
