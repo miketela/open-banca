@@ -196,13 +196,18 @@ class SecretVault:
     def fetch_credential(self, credential_ref: str) -> str:
         """Decrypt and return the plaintext for *credential_ref*.
 
+        Accepts either the opaque UUID ``credential_ref`` (canonical) or the
+        human-readable ``label`` (e.g. ``"personal:username"``) for convenience
+        — falls back to label lookup when the ref string does not match a UUID
+        row directly. Label collisions return the most recent credential.
+
         The row key is derived fresh for each call and zeroized immediately
         after decryption.  Callers are responsible for zeroizing the returned
         string when done (Python strings are immutable; this is a best-effort
         constraint documented in the port).
 
         Raises:
-            KeyError: If no credential with the given ref exists.
+            KeyError: If no credential with the given ref/label exists.
             cryptography.exceptions.InvalidTag: If the ciphertext is tampered.
         """
         conn = self._pool.get()
@@ -214,6 +219,18 @@ class SecretVault:
             """,
             (credential_ref,),
         ).fetchone()
+
+        if row is None:
+            row = conn.execute(
+                """
+                SELECT id, ciphertext, nonce, kdf_meta
+                FROM credentials
+                WHERE label = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (credential_ref,),
+            ).fetchone()
 
         if row is None:
             raise KeyError(f"No credential found for ref={credential_ref!r}")
