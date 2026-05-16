@@ -19,6 +19,15 @@ from open_banca_orchestrator.activities.list_accounts import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_sandbox_mock():
+    """Clean up any injected sandbox mocks from sys.modules after each test."""
+    yield
+    for key in list(sys.modules.keys()):
+        if key.startswith("open_banca_sandbox"):
+            del sys.modules[key]
+
+
 def _inject_sandbox_mock() -> tuple[MagicMock, MagicMock]:
     """Inject a mock open_banca_sandbox module into sys.modules."""
     sandbox_mod = types.ModuleType("open_banca_sandbox")
