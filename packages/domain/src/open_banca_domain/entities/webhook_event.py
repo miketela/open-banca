@@ -18,6 +18,7 @@ class WebhookEventType(StrEnum):
     JOB_FAILED = "job.failed"
     JOB_REMAP_PROPOSED = "job.remap_proposed"
     JOB_HUMAN_REQUIRED = "job.human_required"
+    JOB_CANCELLED = "job.cancelled"
     JOB_HUMAN_INPUT_REQUIRED = "job.human_input_required"
 
 

@@ -36,10 +36,9 @@ with workflow.unsafe.imports_passed_through():
     )
     from open_banca_orchestrator.activities.emit_webhook import (
         EmitWebhookInput,
-        WebhookEvent,
-        WebhookEventType,
         emit_webhook,
     )
+    from open_banca_domain.entities.webhook_event import WebhookEventType
     from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
     from open_banca_orchestrator.activities.login import (
         LoginInput,
@@ -395,13 +394,10 @@ class ScrapeJobWorkflow:
             await workflow.execute_activity(
                 emit_webhook,
                 EmitWebhookInput(
-                    event=WebhookEvent(
-                        event_id=workflow.uuid4().hex,
-                        event_type=WebhookEventType.job_otp_required,
-                        job_id=input.job_id,
-                        timestamp=workflow.now().isoformat(),
-                        payload={"bank_id": input.bank_id},
-                    )
+                    event_id=workflow.uuid4().hex,
+                    event_type=WebhookEventType.JOB_OTP_REQUIRED.value,
+                    job_id=input.job_id,
+                    payload={"bank_id": input.bank_id},
                 ),
                 start_to_close_timeout=datetime.timedelta(seconds=10),
                 retry_policy=_RETRY_WEBHOOK,
@@ -437,13 +433,10 @@ class ScrapeJobWorkflow:
                 await workflow.execute_activity(
                     emit_webhook,
                     EmitWebhookInput(
-                        event=WebhookEvent(
-                            event_id=workflow.uuid4().hex,
-                            event_type=WebhookEventType.job_failed,
-                            job_id=input.job_id,
-                            timestamp=workflow.now().isoformat(),
-                            payload={"reason": "otp_timeout"},
-                        )
+                        event_id=workflow.uuid4().hex,
+                        event_type=WebhookEventType.JOB_FAILED.value,
+                        job_id=input.job_id,
+                        payload={"reason": "otp_timeout"},
                     ),
                     start_to_close_timeout=datetime.timedelta(seconds=10),
                     retry_policy=_RETRY_WEBHOOK,
@@ -630,18 +623,15 @@ class ScrapeJobWorkflow:
             await workflow.execute_activity(
                 emit_webhook,
                 EmitWebhookInput(
-                    event=WebhookEvent(
-                        event_id=workflow.uuid4().hex,
-                        event_type=WebhookEventType.remap_proposed,
-                        job_id=input.job_id,
-                        timestamp=workflow.now().isoformat(),
-                        payload={
-                            "route": judge_result.route,
-                            "confidence": judge_result.confidence,
-                            "risk": judge_result.risk,
-                            "rationale": judge_result.rationale,
-                        },
-                    )
+                    event_id=workflow.uuid4().hex,
+                    event_type=WebhookEventType.JOB_REMAP_PROPOSED.value,
+                    job_id=input.job_id,
+                    payload={
+                        "route": judge_result.route,
+                        "confidence": judge_result.confidence,
+                        "risk": judge_result.risk,
+                        "rationale": judge_result.rationale,
+                    },
                 ),
                 start_to_close_timeout=datetime.timedelta(seconds=10),
                 retry_policy=_RETRY_WEBHOOK,
@@ -682,16 +672,13 @@ class ScrapeJobWorkflow:
         await workflow.execute_activity(
             emit_webhook,
             EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_completed,
-                    job_id=input.job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={
-                        "transaction_count": len(all_transactions),
-                        "account_count": len(account_results),
-                    },
-                )
+                event_id=workflow.uuid4().hex,
+                event_type=WebhookEventType.JOB_COMPLETED.value,
+                job_id=input.job_id,
+                payload={
+                    "transaction_count": len(all_transactions),
+                    "account_count": len(account_results),
+                },
             ),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,
@@ -731,13 +718,10 @@ class ScrapeJobWorkflow:
         await workflow.execute_activity(
             emit_webhook,
             EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_cancelled,
-                    job_id=job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={"reason": self._cancel_reason},
-                )
+                event_id=workflow.uuid4().hex,
+                event_type=WebhookEventType.JOB_CANCELLED.value,
+                job_id=job_id,
+                payload={"reason": self._cancel_reason},
             ),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,
@@ -753,13 +737,10 @@ class ScrapeJobWorkflow:
         await workflow.execute_activity(
             emit_webhook,
             EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_failed,
-                    job_id=job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={"reason": reason},
-                )
+                event_id=workflow.uuid4().hex,
+                event_type=WebhookEventType.JOB_FAILED.value,
+                job_id=job_id,
+                payload={"reason": reason},
             ),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,

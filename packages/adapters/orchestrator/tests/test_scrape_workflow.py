@@ -35,6 +35,10 @@ from open_banca_orchestrator.activities.navigate import NavigateResult
 from open_banca_orchestrator.activities.otp_signal_await import OTPSignalAwaitResult
 from open_banca_orchestrator.activities.parse_excel import ParseExcelResult
 from open_banca_orchestrator.activities.validate import ValidateResult, ValidationStatus
+from open_banca_orchestrator.activities.spawn_sandbox import SpawnSandboxResult
+from open_banca_orchestrator.activities.cleanup_sandbox import CleanupSandboxResult
+from open_banca_orchestrator.activities.persist_result import PersistResultResult
+from open_banca_orchestrator.activities.list_accounts import ListAccountsResult, AccountInfo
 from open_banca_orchestrator.workflows.map_bank import MapBankWorkflow
 from open_banca_orchestrator.workflows.remap_bank import RemapBankWorkflow
 from open_banca_orchestrator.workflows.scrape_job import (
@@ -64,7 +68,7 @@ _FAKE_DOWNLOAD = DownloadExcelResult(
 )
 _FAKE_PARSE = ParseExcelResult(transactions=[], row_count=0)
 _FAKE_VALIDATE = ValidateResult(status=ValidationStatus.ok, validated_count=0)
-_FAKE_EMIT = EmitWebhookResult(enqueued=True, event_id="evt-fake-001", http_status=200)
+_FAKE_EMIT = EmitWebhookResult(enqueued=True, event_id="evt-fake-001")
 _FAKE_OTP_KEEPALIVE = OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=5)
 
 
@@ -116,39 +120,52 @@ async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
     return _FAKE_OTP_KEEPALIVE
 
 
+_FAKE_SPAWN = SpawnSandboxResult(container_id="test-sandbox-001", sidecar_socket_path="/run/banca/sidecar.sock")
+_FAKE_CLEANUP = CleanupSandboxResult(cleaned=True)
+_FAKE_PERSIST = PersistResultResult(persisted_accounts=1, persisted_transactions=0)
+_FAKE_LIST_ACCOUNTS = ListAccountsResult(accounts=[AccountInfo(account_id="acc-001")])
+
+
+@activity.defn(name="SpawnSandboxActivity")
+async def _mock_spawn_sandbox(_input):  # type: ignore[no-untyped-def]
+    return _FAKE_SPAWN
+
+
+@activity.defn(name="CleanupSandboxActivity")
+async def _mock_cleanup_sandbox(_input):  # type: ignore[no-untyped-def]
+    return _FAKE_CLEANUP
+
+
+@activity.defn(name="PersistResultActivity")
+async def _mock_persist_result(_input):  # type: ignore[no-untyped-def]
+    return _FAKE_PERSIST
+
+
+@activity.defn(name="ListAccountsActivity")
+async def _mock_list_accounts(_input):  # type: ignore[no-untyped-def]
+    return _FAKE_LIST_ACCOUNTS
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-_ALL_MOCK_ACTIVITIES_HAPPY = [
-    _mock_login_success,
+_COMMON_MOCKS = [
     _mock_navigate,
     _mock_download,
     _mock_parse_excel,
     _mock_validate,
     _mock_emit,
     _mock_otp_keepalive,
+    _mock_spawn_sandbox,
+    _mock_cleanup_sandbox,
+    _mock_persist_result,
+    _mock_list_accounts,
 ]
 
-_ALL_MOCK_ACTIVITIES_OTP = [
-    _mock_login_needs_otp,
-    _mock_navigate,
-    _mock_download,
-    _mock_parse_excel,
-    _mock_validate,
-    _mock_emit,
-    _mock_otp_keepalive,
-]
-
-_ALL_MOCK_ACTIVITIES_FAILED = [
-    _mock_login_failed,
-    _mock_navigate,
-    _mock_download,
-    _mock_parse_excel,
-    _mock_validate,
-    _mock_emit,
-    _mock_otp_keepalive,
-]
+_ALL_MOCK_ACTIVITIES_HAPPY = [_mock_login_success, *_COMMON_MOCKS]
+_ALL_MOCK_ACTIVITIES_OTP = [_mock_login_needs_otp, *_COMMON_MOCKS]
+_ALL_MOCK_ACTIVITIES_FAILED = [_mock_login_failed, *_COMMON_MOCKS]
 
 
 @pytest.fixture

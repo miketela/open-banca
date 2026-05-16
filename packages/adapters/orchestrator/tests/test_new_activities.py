@@ -170,16 +170,31 @@ class TestListAccounts:
 class TestWorkerRegistration:
     """Verify all new activities are registered in the worker."""
 
+    def _get_activity_names(self) -> list[str]:
+        from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES
+
+        names = []
+        for a in _ASYNC_ACTIVITIES:
+            defn = getattr(a, "__temporal_activity_definition", None)
+            if defn is not None:
+                names.append(defn.name)
+            elif hasattr(a, "__name__"):
+                names.append(a.__name__)
+        return names
+
     def test_all_new_activities_in_async_list(self) -> None:
         from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES
 
-        activity_names = [getattr(a, "__temporal_activity_definition").name for a in _ASYNC_ACTIVITIES]
+        activity_funcs = [
+            a.__name__ if hasattr(a, "__name__") else str(a)
+            for a in _ASYNC_ACTIVITIES
+        ]
 
-        assert "SpawnSandboxActivity" in activity_names
-        assert "CleanupSandboxActivity" in activity_names
-        assert "PersistResultActivity" in activity_names
-        assert "ListAccountsActivity" in activity_names
-        assert "HumanInputAwaitActivity" in activity_names
+        assert "spawn_sandbox" in activity_funcs
+        assert "cleanup_sandbox" in activity_funcs
+        assert "persist_result" in activity_funcs
+        assert "list_accounts" in activity_funcs
+        assert "human_input_await" in activity_funcs
 
     def test_activity_count(self) -> None:
         from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES, _SYNC_ACTIVITIES

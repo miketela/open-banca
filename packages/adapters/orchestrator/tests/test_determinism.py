@@ -30,6 +30,10 @@ from open_banca_orchestrator.activities.navigate import NavigateResult
 from open_banca_orchestrator.activities.otp_signal_await import OTPSignalAwaitResult
 from open_banca_orchestrator.activities.parse_excel import ParseExcelResult
 from open_banca_orchestrator.activities.validate import ValidateResult, ValidationStatus
+from open_banca_orchestrator.activities.spawn_sandbox import SpawnSandboxResult
+from open_banca_orchestrator.activities.cleanup_sandbox import CleanupSandboxResult
+from open_banca_orchestrator.activities.persist_result import PersistResultResult
+from open_banca_orchestrator.activities.list_accounts import ListAccountsResult, AccountInfo
 from open_banca_orchestrator.workflows.map_bank import MapBankWorkflow
 from open_banca_orchestrator.workflows.remap_bank import RemapBankWorkflow
 from open_banca_orchestrator.workflows.scrape_job import (
@@ -72,12 +76,32 @@ async def _mock_validate(_input):  # type: ignore[no-untyped-def]
 
 @activity.defn(name="EmitWebhookActivity")
 async def _mock_emit(_input):  # type: ignore[no-untyped-def]
-    return EmitWebhookResult(enqueued=True, http_status=200)
+    return EmitWebhookResult(enqueued=True, event_id="evt-det-001")
 
 
 @activity.defn(name="OTPSignalAwaitActivity")
 async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
     return OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=0)
+
+
+@activity.defn(name="SpawnSandboxActivity")
+async def _mock_spawn_sandbox(_input):  # type: ignore[no-untyped-def]
+    return SpawnSandboxResult(container_id="test-sandbox", sidecar_socket_path="/run/banca/sidecar.sock")
+
+
+@activity.defn(name="CleanupSandboxActivity")
+async def _mock_cleanup_sandbox(_input):  # type: ignore[no-untyped-def]
+    return CleanupSandboxResult(cleaned=True)
+
+
+@activity.defn(name="PersistResultActivity")
+async def _mock_persist_result(_input):  # type: ignore[no-untyped-def]
+    return PersistResultResult(persisted_accounts=1, persisted_transactions=0)
+
+
+@activity.defn(name="ListAccountsActivity")
+async def _mock_list_accounts(_input):  # type: ignore[no-untyped-def]
+    return ListAccountsResult(accounts=[AccountInfo(account_id="acc-001")])
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +140,10 @@ async def test_scrape_job_workflow_replay_is_deterministic() -> None:
                 _mock_validate,
                 _mock_emit,
                 _mock_otp_keepalive,
+                _mock_spawn_sandbox,
+                _mock_cleanup_sandbox,
+                _mock_persist_result,
+                _mock_list_accounts,
             ],
             activity_executor=ThreadPoolExecutor(max_workers=2),
         ):
