@@ -1,15 +1,16 @@
 # Orquestación multi-agente — open-banca
 
-Cinco roles, dos modelos LLM distintos, un runner sin LLM. La separación es intencional: control de costo, determinismo del scrape, responsabilidad clara cuando algo rompe.
+Seis roles, dos modelos LLM distintos, un runner sin LLM. La separación es intencional: control de costo, determinismo del scrape, responsabilidad clara cuando algo rompe.
 
 ## Tabla de agentes
 
 | Agente | Rol | Modelo | Trigger | Output | Cost guardrail |
 |--------|-----|--------|---------|--------|----------------|
-| **Mapper** | Explora la web del banco y produce `map.json` + `parser.json` declarativos. One-time por banco. | Claude Sonnet 4.6 (vision) vía LiteLLM | Banco nuevo o `RemapBank` con `full_remap` | `map.json`, `parser.json` candidatos | Token budget alto (one-time); cap LLM/job; max 3 remap attempts/banco/24h |
-| **Scraper Runner** | Ejecuta `map.json` cada corrida. Determinístico, replay-able. | **Sin LLM** (Playwright puro) | Cada `POST /scrape` o schedule | Excel descargado + rows parseadas | $0 LLM cost |
+| **Mapper** | Explora la web del banco y produce `map.json` declarativo de navegación. Descarga el primer Excel. One-time por banco. | Claude Sonnet 4.6 (vision) vía LiteLLM | Banco nuevo o `RemapBank` con `full_remap` | `map.json` candidato, sample Excel | Token budget alto (one-time); cap LLM/job; max 3 remaps/banco/24h |
+| **Parser Generator** | Genera `parser.json` (DSL determinista) analizando el sample Excel extraído por el Mapper, o repara un `parser.json` roto ante un `schema_drift`. | Claude Sonnet 4.6 o DeepSeek V3 (texto) | Éxito del Mapper (sample Excel disponible) o decisión `partial_remap (data)` del Judge | `parser.json` validado | Max 3 iteraciones de corrección en loop de dry-run |
+| **Scraper Runner** | Ejecuta `map.json` (para navegar) y `parser.json` (para datos) cada corrida. Determinístico, replay-able. | **Sin LLM** (Playwright + Parser Engine) | Cada `POST /scrape` o schedule | Excel descargado + rows parseadas | $0 LLM cost |
 | **Validator** | Inspecciona el resultado parseado: totales, fechas, nulls, schema. Emite verdict + razones. | DeepSeek V3 (texto) | Después del parse en cada job | `ValidationVerdict` (ok / suspicious / broken) | DeepSeek ~10× más barato que Claude texto |
-| **Judge** | Cuando Runner o Validator detectan ruptura, decide acción. | DeepSeek V3 (texto) | `JobBroken` event, `ValidationFailed` event | Decision: `retry` / `partial_remap` / `full_remap` / `abort` / `escalate_human` + `confidence` + `risk` | Texto-only, costo bajo |
+| **Judge** | Cuando Runner o Validator detectan ruptura, decide acción. | DeepSeek V3 (texto) | `JobBroken` event, `ValidationFailed` event | Decision: `retry` / `partial_remap` (web/data) / `full_remap` / `abort` / `escalate_human` + `confidence` + `risk` | Texto-only, costo bajo |
 | **Remapper** | Reabre el browser, identifica el cambio, propone parche al `map.json`. | Claude Sonnet 4.6 (vision) vía LiteLLM | Judge emite `partial_remap` o `full_remap` | `RemapProposal` (diff + confidence + risk) | Token budget per attempt; cap LLM/job |
 
 ## Secuencia high-level — happy path + remap
@@ -35,8 +36,15 @@ sequenceDiagram
     Maps-->>T: no
     T->>M: invoke Mapper (credenciales + URL banco)
     M->>M: navega, observa, prueba flujos (vision)
-    M-->>Maps: publica map.json + parser.json
-    M-->>T: mapping_done
+    M-->>T: emite map.json + sample_excel.xlsx
+
+    %% Fase 0.5: generación de parser (one-time)
+    participant PG as Parser Generator
+    T->>PG: invoke Parser Generator (sample_excel.xlsx)
+    PG->>PG: analiza Excel, genera candidato parser.json
+    PG->>PG: dry-run y corrige errores (max 3 intentos)
+    PG-->>Maps: publica map.json y parser.json
+    PG-->>T: mapping_done
 
     %% Fase 1: scrape determinístico (cada corrida)
     T->>R: ejecuta map.json
@@ -52,14 +60,23 @@ sequenceDiagram
     %% Fase 3 (alternativa): scrape rompe → Judge decide → Remapper
     Note over R,T: --- en otra corrida, banco cambió ---
     T->>R: ejecuta map.json
-    R-->>T: error: selector roto
-    T->>J: classify failure (logs + screenshot)
-    J-->>T: decision=partial_remap, confidence=0.91, risk=low
-    T->>RM: invoke Remapper (diff context)
-    RM->>RM: navega, identifica nuevo selector (vision)
-    RM-->>T: RemapProposal (diff)
+    R-->>T: error: selector roto o parser falla
+    T->>J: classify failure (logs + screenshot/excel)
+    
+    alt Error de Web (selector roto)
+        J-->>T: decision=partial_remap (web), confidence=0.91, risk=low
+        T->>RM: invoke Remapper (diff context)
+        RM->>RM: navega, identifica nuevo selector (vision)
+        RM-->>T: RemapProposal (diff)
+    else Error de Datos (schema_drift)
+        J-->>T: decision=partial_remap (data), confidence=0.95, risk=low
+        T->>PG: invoke Parser Generator (excel fallido)
+        PG->>PG: analiza nuevo Excel, repara parser.json
+        PG-->>T: RemapProposal (nuevo parser.json)
+    end
+    
     T->>Maps: apply patch (auto, regla ADR-0013)
-    T->>R: re-ejecuta map.json
+    T->>R: re-ejecuta map.json / parser.json
     R-->>T: rows ok
     T->>V: validar
     V-->>T: ok
@@ -83,8 +100,8 @@ stateDiagram-v2
     Evaluating --> Rejected: confidence < 0.5 OR risk == high
 
     %% Auto-apply
-    AutoApply --> Applied: patch escrito en map.json
-    Applied --> ScrapeRetried: Workflow reanuda con map nuevo
+    AutoApply --> Applied: patch escrito en map.json / parser.json
+    Applied --> ScrapeRetried: Workflow reanuda con map/parser nuevo
 
     %% Human-in-the-loop
     HITL --> WaitingApproval: webhook job.remap_proposed enviado
@@ -107,6 +124,10 @@ stateDiagram-v2
 ### Mapper — separado del Scraper
 
 Si dejáramos al LLM "scrapear cada corrida", pagaríamos: latencia (segundos por step), costo (~$0.10–$1 por job según volumen) y no-determinismo (mismo banco, mismo flujo, dos resultados distintos). Separar Mapper del Runner permite que el Runner sea Playwright puro: rápido, repetible, debuggable con HAR + video. ([ADR-0001](../adr/0001-opcion-a-mapper-runner-split.md))
+
+### Parser Generator — especializado en datos
+
+Extrae la responsabilidad de comprender formatos de Excel fuera del Mapper. El Mapper lidia con el browser (DOM, vision, login, clicks) mientras que el Parser Generator opera puramente sobre datos tabulares (CSV/Markdown) para emitir el `parser.json`. Esto permite aislar errores, usar modelos de texto más baratos para la etapa de datos, y re-generar parsers si un formato cambia sin tener que correr todo el Mapper visual.
 
 ### Validator — pre-filtro barato
 

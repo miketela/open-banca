@@ -33,8 +33,9 @@ flowchart TD
 
     J --> Decision{Decisión del Judge}
     Decision -->|retry| Retry[Workflow re-ejecuta el step con backoff]
-    Decision -->|partial_remap| PR[Lanza RemapBankWorkflow scope=patch\nv1: siempre HITL]
-    Decision -->|full_remap| FR[Lanza RemapBankWorkflow scope=full\nv1: siempre HITL]
+    Decision -->|partial_remap (web)| PR[Lanza RemapBankWorkflow scope=patch\nRemapper (Vision)]
+    Decision -->|partial_remap (data)| PRD[Lanza Parser Generator Agent\nSelf-healing de parser.json]
+    Decision -->|full_remap| FR[Lanza RemapBankWorkflow scope=full\nRemapper (Vision)]
     Decision -->|abort| Ab[Workflow → failed]
     Decision -->|human_required| HR[Webhook job.human_required + pausa]
 ```
@@ -46,7 +47,7 @@ flowchart TD
 | `selector_missing` | `page.locator(s).count() == 0` tras `wait_for_selector` con state visible | Botón "Descargar Excel" cambió de class |
 | `step_timeout` | Step excede su `timeout_ms` configurado | Modal nuevo bloquea click sin selector conocido |
 | `http_error` | Navegación o XHR responde 4xx/5xx en URL conocida del flujo | Endpoint de descarga cambió de path |
-| `schema_drift` | Parser DSL no encuentra columna esperada o tipo incorrecto | Excel agrega/quita columna, cambia formato fecha |
+| `schema_drift` | Parser DSL falla (`ParserError`, `SchemaValidationError`) | Excel agrega/quita columna, cambia formato fecha, cambia fila de inicio |
 | `assertion_failed` | `assert_text` no matchea (literal/regex) | Copy de header cambió |
 | `mime_mismatch` | Download recibido con MIME inesperado | Banco devuelve PDF en vez de XLSX |
 | `dom_drift` | Hash del frame relevante difiere del baseline > umbral | Rediseño parcial sin romper selectores específicos |
@@ -73,14 +74,14 @@ Tabla heurística usada por Judge como prior. La decisión final puede divergir 
 
 | Causa | Frecuencia 24h | Sugerencia base | confidence típica | risk típica |
 |-------|----------------|-----------------|--------------------|-------------|
-| `selector_missing` | 1ª vez | `partial_remap` (scope=step) | 0.80 – 0.90 | low |
+| `selector_missing` | 1ª vez | `partial_remap` (web, scope=step) | 0.80 – 0.90 | low |
 | `selector_missing` | ≥ 2 distintos en mismo run | `full_remap` | 0.70 – 0.85 | medium |
 | `step_timeout` | 1ª vez | `retry` (1 vez con backoff) | 0.70 | low |
-| `step_timeout` | recurrente tras retry | `partial_remap` | 0.65 – 0.80 | medium |
-| `http_error` 4xx | path conocido | `partial_remap` | 0.75 | low |
+| `step_timeout` | recurrente tras retry | `partial_remap` (web) | 0.65 – 0.80 | medium |
+| `http_error` 4xx | path conocido | `partial_remap` (web) | 0.75 | low |
 | `http_error` 5xx | cualquier path | `retry` (banco caído transitorio) | 0.85 | low |
-| `schema_drift` | columna nueva tolerable | `partial_remap` (scope=parser) | 0.80 | low |
-| `schema_drift` | columna obligatoria desaparece | `full_remap` | 0.60 | high |
+| `schema_drift` | columna nueva tolerable, cambio de fila | `partial_remap` (data, scope=parser) | 0.80 | low |
+| `schema_drift` | columna obligatoria desaparece | `partial_remap` (data, scope=parser) | 0.60 | high |
 | `assertion_failed` | copy menor | `retry` con `assert` relajado a regex | 0.70 | low |
 | `mime_mismatch` | XLSX → PDF | `human_required` (cambio de canal) | 0.50 | high |
 | `dom_drift` solo | sin otro síntoma | ignorar (no escalar) | N/A | N/A |
@@ -92,7 +93,8 @@ Tabla heurística usada por Judge como prior. La decisión final puede divergir 
 | Decisión | Acción del workflow | Costo | Cuándo |
 |----------|---------------------|-------|--------|
 | `retry` | Re-ejecuta el mismo step con backoff exponencial (max 2 intentos extra) | $0 | causa transitoria, recoverable sin cambios |
-| `partial_remap` | Lanza `RemapBankWorkflow` con `scope=step` o `scope=parser`; sólo se patchea el `step` o `column_map` afectado | Claude vision, $0.05 – $0.15 | cambio localizado |
+| `partial_remap` (web) | Lanza `RemapBankWorkflow` con `scope=step`; sólo se patchea el `step` afectado | Claude vision, $0.05 – $0.15 | cambio localizado en la web |
+| `partial_remap` (data) | Lanza `Parser Generator Agent` para auto-reparar el `parser.json` usando el Excel fallido | Claude/DeepSeek texto, $0.01 – $0.05 | cambio en la estructura del Excel (`schema_drift`) |
 | `full_remap` | Lanza `RemapBankWorkflow` con `scope=full`; Remapper rehace `map.json` desde cero | Claude vision, $0.20 – $0.40 | cambio sistémico, múltiples breakages |
 | `abort` | Workflow → `failed`, webhook `job.failed` con causa | $0 | circuit breaker abierto, budget excedido, error fatal no remap-able |
 | `human_required` | Pausa workflow, webhook `job.human_required` con evidencia, espera intervención manual | $0 (LLM); humano sí | cambio de canal (PDF en vez de XLSX), captcha aparece, fraude flag |

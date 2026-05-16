@@ -2,6 +2,8 @@
 
 Contrato HTTP único entre operador / cliente integrador y open-banca. Expone el ciclo de vida de un `scrape job`, gestiona la confirmación manual de OTP y arbitra la aprobación de remaps.
 
+Para una vista consolidada de cómo los endpoints leen/escriben storage, disparan Temporal y entregan webhooks al cliente, ver [`../01-architecture/api-data-flow.md`](../01-architecture/api-data-flow.md).
+
 ## Sequence diagram: arranque de un job
 
 ```mermaid
@@ -22,6 +24,10 @@ sequenceDiagram
     W-->>A: webhook job.created (vía EmitWebhookActivity)
     A-->>C: POST {webhook_url} job.created
 ```
+
+## Flujo de datos (vista API)
+
+El sequence diagram anterior cubre solo el arranque de `POST /scrape`. Para el mapa completo de entradas HTTP, tablas at-rest (`jobs`, `credentials`, `webhook_outbox`, etc.), señales a Temporal, webhooks salientes y lectura de resultados, ver [`../01-architecture/api-data-flow.md`](../01-architecture/api-data-flow.md) (flowchart + state machine del job). No duplica los sequence diagrams de [`../01-architecture/data-flow.md`](../01-architecture/data-flow.md).
 
 ## Endpoints
 

@@ -21,6 +21,8 @@
 | [hexagonal.md](./01-architecture/hexagonal.md) | Capas dominio/aplicación/adaptadores, 11 ports nombrados |
 | [multi-agent.md](./01-architecture/multi-agent.md) | 5 agentes (Mapper, Scraper, Validator, Judge, Remapper), routing confidence/risk |
 | [data-flow.md](./01-architecture/data-flow.md) | Sequence diagrams happy path + flujo de ruptura |
+| [api-data-flow.md](./01-architecture/api-data-flow.md) | Flujo de datos API-first: HTTP ↔ storage ↔ Temporal ↔ webhooks |
+| [api-data-flow.md](./01-architecture/api-data-flow.md) | Vista API-first: HTTP ↔ storage ↔ Temporal ↔ webhooks |
 
 ### 02 — Componentes
 

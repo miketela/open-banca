@@ -279,7 +279,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.12.6"
-source = { editable = "../../../../browser-use" }
+source = { editable = "../browser-use" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -2189,6 +2189,7 @@ dependencies = [
     { name = "open-banca-browser" },
     { name = "open-banca-domain" },
     { name = "open-banca-observability" },
+    { name = "open-banca-parsing" },
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pydantic-ai-slim" },
@@ -2202,11 +2203,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "browser-use", editable = "../../../../browser-use" },
+    { name = "browser-use", editable = "../browser-use" },
     { name = "litellm", specifier = ">=1.50" },
     { name = "open-banca-browser", editable = "packages/adapters/browser" },
     { name = "open-banca-domain", editable = "packages/domain" },
     { name = "open-banca-observability", editable = "packages/adapters/observability" },
+    { name = "open-banca-parsing", editable = "packages/adapters/parsing" },
     { name = "pillow", specifier = ">=10" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-ai-slim", specifier = ">=0.0.14" },

@@ -110,21 +110,41 @@ Para detalles completos: [`docs/05-operations/deployment.md`](./docs/05-operatio
 3. [`docs/01-architecture/multi-agent.md`](./docs/01-architecture/multi-agent.md) — orquestación de agentes.
 4. [`docs/adr/`](./docs/adr/) — decisiones arquitectónicas registradas.
 
-## Desarrollo local
+## Desarrollo local — paso a paso
+
+Requiere **tres terminales** abiertas en paralelo.
 
 ### Requisitos
 
 - Docker + Docker Compose v2
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) como package manager
+- Python 3.12+ y [uv](https://docs.astral.sh/uv/)
 
-### Setup inicial
+### Paso 1 — Variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+Editar `.env` y completar como mínimo estas tres variables:
+
+| Variable | Descripción | Generar con |
+|----------|-------------|-------------|
+| `OPEN_BANCA_MASTER_PASSPHRASE` | Cifrado AES-GCM de credenciales | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `API_KEY` | Token de autenticación para el API | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `ANTHROPIC_API_KEY` | Claude Sonnet (Mapper/Remapper) | Consola Anthropic |
+
+El resto de variables tienen defaults funcionales para desarrollo local.
+
+### Paso 2 — Dependencias
 
 ```bash
 uv sync --all-extras
+uv run playwright install chromium
 ```
 
-### Levantar stack de desarrollo (Temporal)
+### Paso 3 — Infraestructura (Terminal 1)
+
+Levanta Temporal + PostgreSQL:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
@@ -132,33 +152,55 @@ docker compose -f docker-compose.dev.yml up -d
 
 Servicios expuestos:
 
-| Servicio | Puerto | Descripción |
-|----------|--------|-------------|
-| Temporal gRPC | `7233` | SDK de Python + workers |
-| Temporal Web UI | `8080` | `http://localhost:8080` |
+| Servicio | Puerto |
+|----------|--------|
+| Temporal gRPC | `7233` |
+| Temporal Web UI | `http://localhost:8088` |
 
-Para bajar el stack:
-
-```bash
-docker compose -f docker-compose.dev.yml down
-```
-
-Para ver logs:
+Verificar que Temporal esté listo:
 
 ```bash
 docker compose -f docker-compose.dev.yml logs -f temporal-server
+# Esperar línea: "... all services are ready"
 ```
 
-### Correr el worker (en el host)
+### Paso 4 — Worker Temporal (Terminal 2)
 
 ```bash
-# Con defaults (apunta a localhost:7233)
 uv run python -m open_banca_orchestrator.worker
+```
 
-# Con variables de entorno
-OPEN_BANCA_TEMPORAL_ADDRESS=localhost:7233 \
-OPEN_BANCA_TEMPORAL_TASK_QUEUE=open-banca-task-queue \
-uv run python -m open_banca_orchestrator.worker
+Salida esperada:
+```
+Worker started — task queue: open-banca-task-queue
+```
+
+### Paso 5 — API (Terminal 3)
+
+```bash
+uv run uvicorn open_banca_api.main:app --reload --port 8000
+```
+
+### Paso 6 — Verificar
+
+```bash
+# Health check (sin auth)
+curl http://localhost:8000/health
+
+# Listar bancos soportados (sin auth)
+curl http://localhost:8000/banks
+
+# Endpoint autenticado de prueba
+curl -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     http://localhost:8000/accounts
+```
+
+Documentación interactiva: `http://localhost:8000/docs`
+
+Para bajar el stack de infra:
+
+```bash
+docker compose -f docker-compose.dev.yml down
 ```
 
 ### Tests
