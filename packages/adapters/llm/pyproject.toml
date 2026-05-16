@@ -29,7 +29,6 @@ build-backend = "hatchling.build"
 packages = ["src/open_banca_llm"]
 
 [tool.uv.sources]
-browser-use = { path = "/Users/mike/Documents/maybe finance/browser-use", editable = true }
 open-banca-domain = { workspace = true }
 open-banca-browser = { workspace = true }
 open-banca-observability = { workspace = true }
