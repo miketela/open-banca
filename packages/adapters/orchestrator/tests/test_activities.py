@@ -296,17 +296,16 @@ def test_remapper_agent_input_validates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_emit_webhook_raises_not_implemented(env: ActivityEnvironment) -> None:
-    """EmitWebhookActivity skeleton raises NotImplementedError."""
+async def test_emit_webhook_raises_on_missing_config(env: ActivityEnvironment) -> None:
+    """EmitWebhookActivity raises ApplicationError when config is missing."""
+    from temporalio.exceptions import ApplicationError  # noqa: PLC0415
+
     input_ = EmitWebhookInput(
-        event=WebhookEvent(
-            event_id="evt-001",
-            event_type=WebhookEventType.job_completed,
-            job_id="job-001",
-            timestamp="2026-01-01T00:00:00Z",
-        )
+        event_id="evt-001",
+        event_type=WebhookEventType.JOB_COMPLETED.value,
+        job_id="job-001",
     )
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ApplicationError):
         await env.run(emit_webhook, input_)
 
 

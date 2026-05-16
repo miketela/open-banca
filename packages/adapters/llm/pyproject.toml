@@ -12,6 +12,7 @@ dependencies = [
     "open-banca-domain",
     "open-banca-browser",
     "open-banca-observability",
+    "open-banca-parsing",
     "pillow>=10",
 ]
 
@@ -33,6 +34,7 @@ browser-use = { path = "/Users/mike/Documents/maybe finance/browser-use", editab
 open-banca-domain = { workspace = true }
 open-banca-browser = { workspace = true }
 open-banca-observability = { workspace = true }
+open-banca-parsing = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

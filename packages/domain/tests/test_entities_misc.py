@@ -200,6 +200,7 @@ class TestWebhookEvent:
             "job.progress",
             "job.completed",
             "job.failed",
+            "job.cancelled",
             "job.remap_proposed",
             "job.human_required",
             "job.human_input_required",
