@@ -43,15 +43,20 @@ from concurrent.futures import ThreadPoolExecutor
 from temporalio.worker import Worker
 
 from open_banca_orchestrator.activities import (
+    cleanup_sandbox,
     download_excel,
     emit_webhook,
+    human_input_await,
     judge,
+    list_accounts,
     login,
     mapper_agent,
     navigate,
     otp_signal_await,
     parse_excel,
+    persist_result,
     remapper_agent,
+    spawn_sandbox,
     validate,
 )
 from open_banca_orchestrator.client import get_client
@@ -65,20 +70,25 @@ from open_banca_orchestrator.workflows import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Activity registry — all 10 canonical activities (orchestrator.md §Inventario)
+# Activity registry — 14 async + 1 sync (orchestrator.md §Inventario)
 # ---------------------------------------------------------------------------
 # ParseExcelActivity is synchronous (openpyxl blocking I/O) and must run in a
 # ThreadPoolExecutor.  All other activities are async.
 _ASYNC_ACTIVITIES = [
-    login,           # LoginActivity
-    otp_signal_await,  # OTPSignalAwaitActivity (long-running, 4 min, heartbeat 15s)
-    navigate,        # NavigateActivity
-    download_excel,  # DownloadExcelActivity
-    validate,        # ValidateActivity  — PLACEHOLDER task 19
-    judge,           # JudgeActivity     — PLACEHOLDER task 19
-    mapper_agent,    # MapperAgentActivity — PLACEHOLDER task 14
-    remapper_agent,  # RemapperAgentActivity — PLACEHOLDER task 20
-    emit_webhook,    # EmitWebhookActivity
+    login,              # LoginActivity
+    otp_signal_await,   # OTPSignalAwaitActivity (long-running, 4 min, heartbeat 15s)
+    human_input_await,  # HumanInputAwaitActivity (long-running, ADR-0021)
+    navigate,           # NavigateActivity
+    download_excel,     # DownloadExcelActivity
+    validate,           # ValidateActivity
+    judge,              # JudgeActivity
+    mapper_agent,       # MapperAgentActivity
+    remapper_agent,     # RemapperAgentActivity
+    emit_webhook,       # EmitWebhookActivity
+    spawn_sandbox,      # SpawnSandboxActivity
+    cleanup_sandbox,    # CleanupSandboxActivity
+    persist_result,     # PersistResultActivity
+    list_accounts,      # ListAccountsActivity
 ]
 
 _SYNC_ACTIVITIES = [

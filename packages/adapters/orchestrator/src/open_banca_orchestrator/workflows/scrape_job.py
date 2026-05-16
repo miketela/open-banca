@@ -64,6 +64,25 @@ with workflow.unsafe.imports_passed_through():
         parse_excel,
     )
     from open_banca_orchestrator.activities.validate import ValidateInput, ValidateResult, validate
+    from open_banca_orchestrator.activities.spawn_sandbox import (
+        SpawnSandboxInput,
+        SpawnSandboxResult,
+        spawn_sandbox,
+    )
+    from open_banca_orchestrator.activities.cleanup_sandbox import (
+        CleanupSandboxInput,
+        cleanup_sandbox,
+    )
+    from open_banca_orchestrator.activities.persist_result import (
+        PersistAccountInfo,
+        PersistResultInput,
+        persist_result,
+    )
+    from open_banca_orchestrator.activities.list_accounts import (
+        ListAccountsInput,
+        ListAccountsResult,
+        list_accounts,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +131,22 @@ _RETRY_WEBHOOK = RetryPolicy(
 _RETRY_NONE = RetryPolicy(maximum_attempts=1)  # MapperAgent, RemapperAgent
 
 _RETRY_JUDGE = RetryPolicy(maximum_attempts=1)  # Judge: idempotent on breakage hash
+
+_RETRY_SANDBOX = RetryPolicy(
+    initial_interval=datetime.timedelta(seconds=5),
+    backoff_coefficient=2.0,
+    maximum_attempts=2,
+)
+
+_RETRY_CLEANUP = RetryPolicy(maximum_attempts=2)
+
+_RETRY_PERSIST = RetryPolicy(
+    initial_interval=datetime.timedelta(seconds=2),
+    backoff_coefficient=2.0,
+    maximum_attempts=3,
+)
+
+_RETRY_LIST_ACCOUNTS = RetryPolicy(maximum_attempts=2)
 
 
 # ---------------------------------------------------------------------------
@@ -324,17 +359,15 @@ class ScrapeJobWorkflow:
         # )
 
         # ------------------------------------------------------------------
-        # Step 2: TODO(task-sandbox) — spawn sandbox Docker container per job
+        # Step 2: Spawn sandbox Docker container per job
         # ------------------------------------------------------------------
-        # sandbox_result = await workflow.execute_activity(
-        #     spawn_sandbox,
-        #     SpawnSandboxInput(job_id=input.job_id),
-        #     start_to_close_timeout=timedelta(seconds=60),
-        # )
-        # sandbox_container_id = sandbox_result.container_id
-
-        # Placeholder until sandbox task lands
-        sandbox_container_id = f"sandbox-{input.job_id}"  # replaced by task-sandbox
+        sandbox_result: SpawnSandboxResult = await workflow.execute_activity(
+            spawn_sandbox,
+            SpawnSandboxInput(job_id=input.job_id, bank_id=input.bank_id),
+            start_to_close_timeout=datetime.timedelta(seconds=60),
+            retry_policy=_RETRY_SANDBOX,
+        )
+        sandbox_container_id = sandbox_result.container_id
 
         # ------------------------------------------------------------------
         # Step 3: LoginActivity — authenticate to bank portal
@@ -425,10 +458,16 @@ class ScrapeJobWorkflow:
                     otp_keepalive_handle.cancel()
 
             if self._cancelled:
-                return await self._do_cancel(input.job_id)
+                return await self._do_cancel(input.job_id, sandbox_container_id)
 
         elif login_result.status == LoginStatus.failed:
             errors.append(f"Login failed: {login_result.error_detail}")
+            await workflow.execute_activity(
+                cleanup_sandbox,
+                CleanupSandboxInput(container_id=sandbox_container_id),
+                start_to_close_timeout=datetime.timedelta(seconds=30),
+                retry_policy=_RETRY_CLEANUP,
+            )
             await self._emit_failure(input.job_id, "login_failed")
             return ScrapeJobResult(
                 job_id=input.job_id,
@@ -439,9 +478,21 @@ class ScrapeJobWorkflow:
         # ------------------------------------------------------------------
         # Steps 5-7: Navigate → Download → Parse per account
         # ------------------------------------------------------------------
-        # Determine account list (placeholder — real account list from map.json/bank)
-        # TODO: replace with actual accounts from map.json + account_filter
-        accounts_to_scrape: list[str] = input.account_filter or ["default-account"]
+        if input.account_filter:
+            accounts_to_scrape: list[str] = input.account_filter
+        else:
+            acct_result: ListAccountsResult = await workflow.execute_activity(
+                list_accounts,
+                ListAccountsInput(
+                    bank_id=input.bank_id,
+                    browser_session_token=login_result.browser_session_token.container_id
+                    if login_result.browser_session_token
+                    else None,
+                ),
+                start_to_close_timeout=datetime.timedelta(seconds=30),
+                retry_policy=_RETRY_LIST_ACCOUNTS,
+            )
+            accounts_to_scrape = [a.account_id for a in acct_result.accounts]
 
         # Resolve since_date:
         #   - full_historical mode → 6-month lookback (configurable via env in activity)
@@ -517,7 +568,7 @@ class ScrapeJobWorkflow:
             )
 
         if self._cancelled:
-            return await self._do_cancel(input.job_id)
+            return await self._do_cancel(input.job_id, sandbox_container_id)
 
         # ------------------------------------------------------------------
         # Step 8: ValidateActivity
@@ -602,22 +653,28 @@ class ScrapeJobWorkflow:
             )
 
             if self._cancelled:
-                return await self._do_cancel(input.job_id)
+                return await self._do_cancel(input.job_id, sandbox_container_id)
 
         # ------------------------------------------------------------------
-        # Step 9: TODO(task-storage) — persist job/accounts/transactions
+        # Step 9: Persist job/accounts/transactions to storage
         # ------------------------------------------------------------------
-        # await workflow.execute_activity(
-        #     persist_result,
-        #     PersistResultInput(job_id=input.job_id, accounts=account_results,
-        #                        transactions=all_transactions),
-        #     start_to_close_timeout=timedelta(seconds=30),
-        # )
-        # NOTE (task-32): After persist_result completes, the per-account cursor
-        # advances automatically — DedupEngine.get_cursor(account_id) derives
-        # MAX(posted_at) from the transactions table.  No explicit save_cursor
-        # call is required.  DedupEngine.effective_since(account_id) will return
-        # the new cursor - 3 days on the next incremental run.
+        await workflow.execute_activity(
+            persist_result,
+            PersistResultInput(
+                job_id=input.job_id,
+                bank_id=input.bank_id,
+                accounts=[
+                    PersistAccountInfo(
+                        account_id=a.account_id,
+                        transaction_count=a.transaction_count,
+                    )
+                    for a in account_results
+                ],
+                transactions=all_transactions,
+            ),
+            start_to_close_timeout=datetime.timedelta(seconds=30),
+            retry_policy=_RETRY_PERSIST,
+        )
 
         # ------------------------------------------------------------------
         # Step 10: EmitWebhookActivity — job.completed
@@ -641,13 +698,14 @@ class ScrapeJobWorkflow:
         )
 
         # ------------------------------------------------------------------
-        # Step 11: TODO(task-sandbox) — cleanup sandbox container
+        # Step 11: Cleanup sandbox container
         # ------------------------------------------------------------------
-        # await workflow.execute_activity(
-        #     cleanup_sandbox,
-        #     CleanupInput(sandbox_container_id=sandbox_container_id),
-        #     start_to_close_timeout=timedelta(seconds=30),
-        # )
+        await workflow.execute_activity(
+            cleanup_sandbox,
+            CleanupSandboxInput(container_id=sandbox_container_id),
+            start_to_close_timeout=datetime.timedelta(seconds=30),
+            retry_policy=_RETRY_CLEANUP,
+        )
 
         return ScrapeJobResult(
             job_id=input.job_id,
@@ -661,9 +719,15 @@ class ScrapeJobWorkflow:
     # Helpers
     # -----------------------------------------------------------------------
 
-    async def _do_cancel(self, job_id: str) -> ScrapeJobResult:
+    async def _do_cancel(self, job_id: str, sandbox_container_id: str = "") -> ScrapeJobResult:
         """Execute cleanup and return a cancelled result."""
-        # TODO(task-sandbox): kill sandbox container on cancel
+        if sandbox_container_id:
+            await workflow.execute_activity(
+                cleanup_sandbox,
+                CleanupSandboxInput(container_id=sandbox_container_id),
+                start_to_close_timeout=datetime.timedelta(seconds=30),
+                retry_policy=_RETRY_CLEANUP,
+            )
         await workflow.execute_activity(
             emit_webhook,
             EmitWebhookInput(

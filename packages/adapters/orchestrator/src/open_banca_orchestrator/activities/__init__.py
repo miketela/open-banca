@@ -1,7 +1,6 @@
 """Activity definitions for open-banca Temporal workflows.
 
-All 11 canonical activities from docs/02-components/orchestrator.md, plus
-placeholder stubs for activities implemented in future tasks.
+All 15 canonical activities from docs/02-components/orchestrator.md:
 
 Activity inventory (orchestrator.md §Inventario):
   LoginActivity             — exp backoff, 2 attempts, 90s start-to-close, 10s heartbeat
@@ -10,11 +9,15 @@ Activity inventory (orchestrator.md §Inventario):
   NavigateActivity          — exp backoff, 3 attempts, 30s start-to-close, 5s heartbeat
   DownloadExcelActivity     — exp backoff, 3 attempts, 2min start-to-close, 10s heartbeat
   ParseExcelActivity        — 1 attempt (deterministic), 60s start-to-close, threadpool
-  ValidateActivity          — 2 attempts, 60s start-to-close    (PLACEHOLDER — task 19)
-  JudgeActivity             — 1 attempt, 30s start-to-close      (PLACEHOLDER — task 19)
-  MapperAgentActivity       — no retry, 20min start-to-close, 30s heartbeat  (task 14)
-  RemapperAgentActivity     — no retry, 15min start-to-close, 30s heartbeat  (task 20)
+  ValidateActivity          — 2 attempts, 60s start-to-close
+  JudgeActivity             — 1 attempt, 30s start-to-close
+  MapperAgentActivity       — no retry, 20min start-to-close, 30s heartbeat
+  RemapperAgentActivity     — no retry, 15min start-to-close, 30s heartbeat
   EmitWebhookActivity       — exp backoff, 5 attempts, 10s start-to-close, max 1h
+  SpawnSandboxActivity      — 2 attempts, 60s start-to-close
+  CleanupSandboxActivity    — 2 attempts, 30s start-to-close (idempotent)
+  PersistResultActivity     — 3 attempts, 30s start-to-close (UPSERT)
+  ListAccountsActivity      — 2 attempts, 30s start-to-close
 """
 
 from open_banca_orchestrator.activities.human_input_await import (
@@ -83,6 +86,32 @@ from open_banca_orchestrator.activities.validate import (
     ValidateResult,
     validate,
 )
+from open_banca_orchestrator.activities.spawn_sandbox import (
+    SpawnSandboxActivity,
+    SpawnSandboxInput,
+    SpawnSandboxResult,
+    spawn_sandbox,
+)
+from open_banca_orchestrator.activities.cleanup_sandbox import (
+    CleanupSandboxActivity,
+    CleanupSandboxInput,
+    CleanupSandboxResult,
+    cleanup_sandbox,
+)
+from open_banca_orchestrator.activities.persist_result import (
+    PersistAccountInfo,
+    PersistResultActivity,
+    PersistResultInput,
+    PersistResultResult,
+    persist_result,
+)
+from open_banca_orchestrator.activities.list_accounts import (
+    ListAccountsActivity,
+    ListAccountsInput,
+    ListAccountsResult,
+    AccountInfo,
+    list_accounts,
+)
 
 __all__ = [
     # Login
@@ -140,4 +169,26 @@ __all__ = [
     "EmitWebhookInput",
     "EmitWebhookResult",
     "emit_webhook",
+    # Spawn sandbox
+    "SpawnSandboxActivity",
+    "SpawnSandboxInput",
+    "SpawnSandboxResult",
+    "spawn_sandbox",
+    # Cleanup sandbox
+    "CleanupSandboxActivity",
+    "CleanupSandboxInput",
+    "CleanupSandboxResult",
+    "cleanup_sandbox",
+    # Persist result
+    "PersistAccountInfo",
+    "PersistResultActivity",
+    "PersistResultInput",
+    "PersistResultResult",
+    "persist_result",
+    # List accounts
+    "ListAccountsActivity",
+    "ListAccountsInput",
+    "ListAccountsResult",
+    "AccountInfo",
+    "list_accounts",
 ]
