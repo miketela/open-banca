@@ -182,11 +182,9 @@ class RemapperAgent:
         if self._llm_override is not None:
             inner: Any = self._llm_override
         else:
-            from browser_use.llm.litellm.chat import (
-                ChatLiteLLM,  # type: ignore[import-untyped]
-            )
+            from open_banca_llm.litellm_config import build_litellm_model
 
-            inner = ChatLiteLLM(model=self._model_name)
+            inner = build_litellm_model(model=self._model_name)
 
         pii_wrapped = PIIRedactingChatModel(
             inner=inner,

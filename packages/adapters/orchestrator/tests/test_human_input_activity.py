@@ -91,21 +91,23 @@ def test_human_input_await_activity_class_exists() -> None:
 def test_human_input_await_input_question_hash_required() -> None:
     """question_hash is required — no default."""
     with pytest.raises(Exception):  # pydantic ValidationError
-        HumanInputAwaitInput(
-            job_id="job-001",
-            field_key="security_q_pet",
-            # missing question_hash
-            question_text="question",
-            selector="#answer",
+        HumanInputAwaitInput.model_validate(
+            {
+                "job_id": "job-001",
+                "field_key": "security_q_pet",
+                "question_text": "question",
+                "selector": "#answer",
+            }
         )
 
 
 def test_human_input_await_input_rejects_missing_job_id() -> None:
     with pytest.raises(Exception):
-        HumanInputAwaitInput(
-            # missing job_id
-            field_key="security_q_pet",
-            question_hash="a" * 64,
-            question_text="question",
-            selector="#answer",
+        HumanInputAwaitInput.model_validate(
+            {
+                "field_key": "security_q_pet",
+                "question_hash": "a" * 64,
+                "question_text": "question",
+                "selector": "#answer",
+            }
         )

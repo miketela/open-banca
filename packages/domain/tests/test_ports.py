@@ -18,7 +18,7 @@ from open_banca_domain.ports.excel_parser_port import ExcelParserPort
 from open_banca_domain.ports.job_store_port import JobStorePort
 from open_banca_domain.ports.llm_port import LLMPort, LLMResponse
 from open_banca_domain.ports.orchestrator_port import OrchestratorPort
-from open_banca_domain.ports.sandbox_port import SandboxPort
+from open_banca_domain.ports.sandbox_port import SandboxPort, SandboxToken
 from open_banca_domain.ports.scraper_port import ScrapeResult, ScraperPort
 from open_banca_domain.ports.secret_store_port import SecretStorePort
 from open_banca_domain.ports.workflow_engine_port import WorkflowEnginePort
@@ -105,11 +105,15 @@ class FakeBrowserDriver:
 
 
 class FakeSandbox:
-    def spawn(self, job_id: str) -> str:
-        return "container-1"
+    def spawn(self, job_id: str, bank_id: str) -> SandboxToken:
+        return SandboxToken(
+            container_id="container-1",
+            container_ip="10.0.0.1",
+            network_name=f"sandbox-{job_id}",
+        )
 
-    def kill(self, container_id: str) -> None: ...
-    def attach_network_policy(self, container_id: str, policy: str) -> None: ...
+    def kill(self, token: SandboxToken) -> None: ...
+    def attach_network_policy(self, token: SandboxToken, allowed_domains: list[str]) -> None: ...
 
 
 class FakeExcelParser:
@@ -224,8 +228,9 @@ class TestSandboxPort:
     def test_runtime_checkable(self) -> None:
         assert isinstance(FakeSandbox(), SandboxPort)
 
-    def test_spawn_returns_container_id(self) -> None:
-        assert FakeSandbox().spawn("job-1") == "container-1"
+    def test_spawn_returns_sandbox_token(self) -> None:
+        token = FakeSandbox().spawn("job-1", "banco_general")
+        assert token.container_id == "container-1"
 
 
 class TestExcelParserPort:

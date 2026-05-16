@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -66,23 +66,29 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:
     from open_banca_domain.entities.job import Job, JobMode, JobStatus
     from open_banca_domain.entities.transaction import Transaction
     from open_banca_storage.config import get_settings as get_storage_settings
-    from open_banca_storage.connection import Connection
-    from open_banca_storage.migrations import ensure_schema
+    from open_banca_storage.connection import ConnectionPool, PassthroughKeyDerivation
+    from open_banca_storage.dedup.fingerprint import compute_fingerprint
+    from open_banca_storage.migrations import migrate
     from open_banca_storage.repositories.job_store import SqliteJobStore
 
     passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "")
     settings = get_storage_settings()
-    conn = Connection(db_path=settings.db_path, passphrase=passphrase)
-    ensure_schema(conn)
+    pool = ConnectionPool(
+        db_path=settings.open_banca_db_path,
+        passphrase=passphrase,
+        key_derivation=PassthroughKeyDerivation(),
+    )
+    conn = pool.get()
+    migrate(conn)
     store = SqliteJobStore(conn)
 
     now = datetime.now(tz=UTC)
     job = Job(
         id=input.job_id,
-        status=JobStatus.completed,
+        status=JobStatus.COMPLETED,
         bank=input.bank_id,
         credential_ref="",
-        mode=JobMode.full_historical,
+        mode=JobMode.FULL,
         created_at=now,
         updated_at=now,
     )
@@ -90,15 +96,19 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:
 
     tx_count = 0
     for txn in input.transactions:
+        posted_at = datetime.fromisoformat(txn.date).replace(tzinfo=UTC)
+        amount = Decimal(txn.amount)
         tx = Transaction(
             id=txn.raw_id or str(uuid.uuid4()),
             account_id=txn.account_id,
-            posted_at=date.fromisoformat(txn.date),
-            value_at=date.fromisoformat(txn.date),
-            amount=Decimal(txn.amount),
+            posted_at=posted_at,
+            value_at=posted_at,
+            amount=amount,
             currency=txn.currency,
             description=txn.description,
-            fingerprint_hash=txn.fingerprint_hash or "",
+            fingerprint_hash=compute_fingerprint(
+                txn.account_id, posted_at, posted_at, amount, txn.description
+            ),
         )
         store.save_transaction_with_job(tx, input.job_id)
         tx_count += 1

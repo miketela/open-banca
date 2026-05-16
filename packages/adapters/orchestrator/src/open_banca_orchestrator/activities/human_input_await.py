@@ -134,7 +134,7 @@ async def human_input_await(input: HumanInputAwaitInput) -> HumanInputAwaitResul
             )
 
         # Report heartbeat to Temporal
-        activity.heartbeat(sidecar_alive=True, ping_count=heartbeat_count)
+        activity.heartbeat({"sidecar_alive": sidecar_alive, "ping_count": heartbeat_count})
         heartbeat_count += 1
 
         logger.debug(

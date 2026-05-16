@@ -122,6 +122,7 @@ class TestCostMetricEmission:
                     if metric.name == "llm_cost_usd_total":
                         # Check that at least one data point has agent=remapper
                         for dp in metric.data.data_points:
-                            if dp.attributes.get("agent") == "remapper":
+                            attrs = dp.attributes or {}
+                            if attrs.get("agent") == "remapper":
                                 return
         pytest.fail("No llm_cost_usd_total data point with agent=remapper found")

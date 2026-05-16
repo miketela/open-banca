@@ -9,6 +9,7 @@ Test matrix:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -114,7 +115,7 @@ _ALL_MOCK_ACTIVITIES = [
 
 
 @pytest.fixture
-def thread_pool() -> ThreadPoolExecutor:
+def thread_pool() -> Iterator[ThreadPoolExecutor]:
     with ThreadPoolExecutor(max_workers=2) as pool:
         yield pool
 
@@ -153,7 +154,6 @@ async def test_workflow_incremental_completes(thread_pool: ThreadPoolExecutor) -
                 incremental_input,
                 id=incremental_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -188,7 +188,6 @@ async def test_workflow_full_historical_completes(thread_pool: ThreadPoolExecuto
                 full_input,
                 id=full_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -227,7 +226,6 @@ async def test_workflow_incremental_no_cursor_uses_180d_lookback(
                 incremental_no_cursor,
                 id=incremental_no_cursor.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     # Should complete without error (6-month fallback is handled gracefully)

@@ -95,6 +95,7 @@ python_version = "3.12"
 strict = true
 ignore_missing_imports = false
 search_path = [
+    "packages/adapters/orchestrator/tests",
     "packages/domain/src",
     "packages/application/src",
     "packages/adapters/api/src",

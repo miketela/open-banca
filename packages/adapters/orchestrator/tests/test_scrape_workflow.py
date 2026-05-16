@@ -14,6 +14,7 @@ Test matrix:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -48,7 +49,7 @@ def base_input() -> ScrapeJobInput:
 
 
 @pytest.fixture
-def thread_pool() -> ThreadPoolExecutor:
+def thread_pool() -> Iterator[ThreadPoolExecutor]:
     """Thread pool for synchronous activities (ParseExcelActivity)."""
     with ThreadPoolExecutor(max_workers=2) as pool:
         yield pool
@@ -77,7 +78,6 @@ async def test_happy_path(base_input: ScrapeJobInput, thread_pool: ThreadPoolExe
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -106,7 +106,6 @@ async def test_otp_timeout(base_input: ScrapeJobInput, thread_pool: ThreadPoolEx
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "otp_timeout"
@@ -158,7 +157,6 @@ async def test_login_failed(base_input: ScrapeJobInput, thread_pool: ThreadPoolE
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "failed"
