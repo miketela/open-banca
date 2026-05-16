@@ -555,10 +555,7 @@ def test_socket_proxy_only() -> None:
 def test_socket_proxy_only_default_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default URL sourced from DOCKER_HOST env must also be HTTP-based."""
     monkeypatch.setenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
-    # Re-import to trigger module-level constant re-evaluation via constructor default
-    from open_banca_sandbox import runner as runner_mod
-
-    r = DockerSandboxRunner(proxy_url=runner_mod._DEFAULT_PROXY_URL)
+    r = DockerSandboxRunner()
     assert r._base_url.startswith("http://")
     assert "docker.sock" not in r._base_url
     r.close()

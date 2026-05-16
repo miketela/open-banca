@@ -38,9 +38,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_DEFAULT_PROXY_URL = os.getenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375").replace(
-    "tcp://", "http://"
-)
+def _resolve_proxy_url(proxy_url: str | None = None) -> str:
+    """Resolve docker-socket-proxy base URL (HTTP, never a unix socket path)."""
+    raw = proxy_url or os.getenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
+    return raw.replace("tcp://", "http://")
+
+
 _DOCKER_API_VERSION = "v1.43"
 
 # Hard container TTL enforced by cleanup.py; spawn embeds a label so cleanup
@@ -74,11 +77,11 @@ class DockerSandboxRunner:
 
     def __init__(
         self,
-        proxy_url: str = _DEFAULT_PROXY_URL,
+        proxy_url: str | None = None,
         image: str = _SANDBOX_IMAGE,
         timeout: float = 30.0,
     ) -> None:
-        self._base_url = proxy_url.rstrip("/")
+        self._base_url = _resolve_proxy_url(proxy_url).rstrip("/")
         self._image = image
         self._client = httpx.Client(base_url=self._base_url, timeout=timeout)
 

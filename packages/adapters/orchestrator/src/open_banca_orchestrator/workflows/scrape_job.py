@@ -34,12 +34,8 @@ with workflow.unsafe.imports_passed_through():
         DownloadPeriod,
         download_excel,
     )
-    from open_banca_orchestrator.activities.emit_webhook import (
-        EmitWebhookInput,
-        WebhookEvent,
-        WebhookEventType,
-        emit_webhook,
-    )
+    from open_banca_domain.entities.webhook_event import WebhookEventType
+    from open_banca_orchestrator.activities.emit_webhook import EmitWebhookInput, emit_webhook
     from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
     from open_banca_orchestrator.activities.login import (
         LoginInput,
@@ -394,14 +390,10 @@ class ScrapeJobWorkflow:
             # Emit job.otp_required webhook so the client can prompt the user
             await workflow.execute_activity(
                 emit_webhook,
-                EmitWebhookInput(
-                    event=WebhookEvent(
-                        event_id=workflow.uuid4().hex,
-                        event_type=WebhookEventType.job_otp_required,
-                        job_id=input.job_id,
-                        timestamp=workflow.now().isoformat(),
-                        payload={"bank_id": input.bank_id},
-                    )
+                self._webhook_input(
+                    WebhookEventType.JOB_OTP_REQUIRED,
+                    input.job_id,
+                    {"bank_id": input.bank_id},
                 ),
                 start_to_close_timeout=datetime.timedelta(seconds=10),
                 retry_policy=_RETRY_WEBHOOK,
@@ -436,14 +428,10 @@ class ScrapeJobWorkflow:
                     otp_keepalive_handle.cancel()
                 await workflow.execute_activity(
                     emit_webhook,
-                    EmitWebhookInput(
-                        event=WebhookEvent(
-                            event_id=workflow.uuid4().hex,
-                            event_type=WebhookEventType.job_failed,
-                            job_id=input.job_id,
-                            timestamp=workflow.now().isoformat(),
-                            payload={"reason": "otp_timeout"},
-                        )
+                    self._webhook_input(
+                        WebhookEventType.JOB_FAILED,
+                        input.job_id,
+                        {"reason": "otp_timeout"},
                     ),
                     start_to_close_timeout=datetime.timedelta(seconds=10),
                     retry_policy=_RETRY_WEBHOOK,
@@ -629,19 +617,15 @@ class ScrapeJobWorkflow:
             # (In v2, auto-apply path would branch here on route/confidence/risk.)
             await workflow.execute_activity(
                 emit_webhook,
-                EmitWebhookInput(
-                    event=WebhookEvent(
-                        event_id=workflow.uuid4().hex,
-                        event_type=WebhookEventType.remap_proposed,
-                        job_id=input.job_id,
-                        timestamp=workflow.now().isoformat(),
-                        payload={
-                            "route": judge_result.route,
-                            "confidence": judge_result.confidence,
-                            "risk": judge_result.risk,
-                            "rationale": judge_result.rationale,
-                        },
-                    )
+                self._webhook_input(
+                    WebhookEventType.JOB_REMAP_PROPOSED,
+                    input.job_id,
+                    {
+                        "route": judge_result.route,
+                        "confidence": judge_result.confidence,
+                        "risk": judge_result.risk,
+                        "rationale": judge_result.rationale,
+                    },
                 ),
                 start_to_close_timeout=datetime.timedelta(seconds=10),
                 retry_policy=_RETRY_WEBHOOK,
@@ -681,17 +665,13 @@ class ScrapeJobWorkflow:
         # ------------------------------------------------------------------
         await workflow.execute_activity(
             emit_webhook,
-            EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_completed,
-                    job_id=input.job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={
-                        "transaction_count": len(all_transactions),
-                        "account_count": len(account_results),
-                    },
-                )
+            self._webhook_input(
+                WebhookEventType.JOB_COMPLETED,
+                input.job_id,
+                {
+                    "transaction_count": len(all_transactions),
+                    "account_count": len(account_results),
+                },
             ),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,
@@ -730,14 +710,10 @@ class ScrapeJobWorkflow:
             )
         await workflow.execute_activity(
             emit_webhook,
-            EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_cancelled,
-                    job_id=job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={"reason": self._cancel_reason},
-                )
+            self._webhook_input(
+                WebhookEventType.JOB_FAILED,
+                job_id,
+                {"reason": "cancelled", "cancel_reason": self._cancel_reason},
             ),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,
@@ -748,19 +724,25 @@ class ScrapeJobWorkflow:
             errors=[f"Cancelled: {self._cancel_reason}"],
         )
 
+    def _webhook_input(
+        self,
+        event_type: WebhookEventType,
+        job_id: str,
+        payload: dict[str, object],
+    ) -> EmitWebhookInput:
+        """Build EmitWebhookInput with a deterministic event_id."""
+        return EmitWebhookInput(
+            event_id=workflow.uuid4().hex,
+            event_type=event_type.value,
+            job_id=job_id,
+            payload=payload,
+        )
+
     async def _emit_failure(self, job_id: str, reason: str) -> None:
         """Emit a job.failed webhook event."""
         await workflow.execute_activity(
             emit_webhook,
-            EmitWebhookInput(
-                event=WebhookEvent(
-                    event_id=workflow.uuid4().hex,
-                    event_type=WebhookEventType.job_failed,
-                    job_id=job_id,
-                    timestamp=workflow.now().isoformat(),
-                    payload={"reason": reason},
-                )
-            ),
+            self._webhook_input(WebhookEventType.JOB_FAILED, job_id, {"reason": reason}),
             start_to_close_timeout=datetime.timedelta(seconds=10),
             retry_policy=_RETRY_WEBHOOK,
         )

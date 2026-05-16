@@ -37,9 +37,6 @@ dev = [
     "respx>=0.22",
 ]
 
-[tool.uv.sources]
-browser-use = { path = "/Users/mike/Documents/maybe finance/browser-use", editable = true }
-
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -114,6 +111,7 @@ markers = [
 addopts = "-ra --tb=short -q --import-mode=importlib"
 
 pythonpath = [
+    "packages/adapters/orchestrator/tests",
     "packages/domain/src",
     "packages/application/src",
     "packages/adapters/api/src",

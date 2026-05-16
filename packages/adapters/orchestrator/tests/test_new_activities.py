@@ -3,39 +3,24 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from open_banca_orchestrator.activities.list_accounts import (
-    AccountInfo,
     ListAccountsInput,
-    ListAccountsResult,
     _extract_accounts,
     list_accounts,
 )
-
-
-def _inject_sandbox_mock() -> tuple[MagicMock, MagicMock]:
-    """Inject a mock open_banca_sandbox module into sys.modules."""
-    sandbox_mod = types.ModuleType("open_banca_sandbox")
-    runner_mod = types.ModuleType("open_banca_sandbox.runner")
-    mock_cls = MagicMock()
-    runner_mod.DockerSandboxRunner = mock_cls  # type: ignore[attr-defined]
-    sandbox_mod.runner = runner_mod  # type: ignore[attr-defined]
-    sys.modules["open_banca_sandbox"] = sandbox_mod
-    sys.modules["open_banca_sandbox.runner"] = runner_mod
-    return mock_cls, sandbox_mod  # type: ignore[return-value]
 
 
 class TestSpawnSandbox:
     """SpawnSandboxActivity tests with mocked Docker runner."""
 
     @pytest.mark.asyncio
-    async def test_spawn_returns_container_id(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_spawn_returns_container_id(self, mock_cls: MagicMock) -> None:
         from open_banca_domain.ports.sandbox_port import SandboxToken
         from open_banca_orchestrator.activities.spawn_sandbox import (
             SpawnSandboxInput,
@@ -49,7 +34,6 @@ class TestSpawnSandbox:
             network_name="banca-job1",
             sidecar_socket_path="/run/banca/sidecar.sock",
         )
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.spawn.return_value = mock_token
         mock_cls.return_value = mock_runner
@@ -68,14 +52,14 @@ class TestCleanupSandbox:
     """CleanupSandboxActivity tests with mocked Docker runner."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_success(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_cleanup_success(self, mock_cls: MagicMock) -> None:
         from open_banca_orchestrator.activities.cleanup_sandbox import (
             CleanupSandboxInput,
             CleanupSandboxResult,
             cleanup_sandbox,
         )
 
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.kill.return_value = None
         mock_cls.return_value = mock_runner
@@ -88,14 +72,14 @@ class TestCleanupSandbox:
         assert result.cleaned is True
 
     @pytest.mark.asyncio
-    async def test_cleanup_idempotent_not_found(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_cleanup_idempotent_not_found(self, mock_cls: MagicMock) -> None:
         """Cleanup should succeed even if container is already gone."""
         from open_banca_orchestrator.activities.cleanup_sandbox import (
             CleanupSandboxInput,
             cleanup_sandbox,
         )
 
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.kill.side_effect = Exception("container not found: 404")
         mock_cls.return_value = mock_runner

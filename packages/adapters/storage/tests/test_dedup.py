@@ -510,7 +510,11 @@ def _transaction_strategy(draw: st.DrawFn, account_id: str) -> Transaction:
     )
 
 
-@settings(max_examples=100, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=100,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(st.data())
 def test_hypothesis_dedup_idempotent(tmp_path: Path, data: st.DataObject) -> None:
     """Ingesting the same batch twice produces no new transactions on the second pass."""

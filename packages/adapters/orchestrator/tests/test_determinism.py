@@ -18,18 +18,11 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer, Worker
+from workflow_activity_mocks import WORKFLOW_MOCK_ACTIVITIES_HAPPY
 
-from open_banca_orchestrator.activities.download_excel import DownloadExcelResult
-from open_banca_orchestrator.activities.emit_webhook import EmitWebhookResult
-from open_banca_orchestrator.activities.login import LoginResult, LoginStatus
-from open_banca_orchestrator.activities.navigate import NavigateResult
-from open_banca_orchestrator.activities.otp_signal_await import OTPSignalAwaitResult
-from open_banca_orchestrator.activities.parse_excel import ParseExcelResult
-from open_banca_orchestrator.activities.validate import ValidateResult, ValidationStatus
 from open_banca_orchestrator.workflows.map_bank import MapBankWorkflow
 from open_banca_orchestrator.workflows.remap_bank import RemapBankWorkflow
 from open_banca_orchestrator.workflows.scrape_job import (
@@ -37,52 +30,6 @@ from open_banca_orchestrator.workflows.scrape_job import (
     ScrapeJobWorkflow,
     ScrapeMode,
 )
-
-# ---------------------------------------------------------------------------
-# Mock activities (same as test_scrape_workflow happy path)
-# ---------------------------------------------------------------------------
-
-
-@activity.defn(name="LoginActivity")
-async def _mock_login_success(_input):  # type: ignore[no-untyped-def]
-    return LoginResult(status=LoginStatus.success)
-
-
-@activity.defn(name="NavigateActivity")
-async def _mock_navigate(_input):  # type: ignore[no-untyped-def]
-    return NavigateResult(current_url="https://bank.test/txns", page_title="Txns")
-
-
-@activity.defn(name="DownloadExcelActivity")
-async def _mock_download(_input):  # type: ignore[no-untyped-def]
-    return DownloadExcelResult(
-        excel_path="/tmp/test.xlsx", file_size_bytes=512, content_hash="abc"
-    )
-
-
-@activity.defn(name="ParseExcelActivity")
-def _mock_parse_excel(_input):  # type: ignore[no-untyped-def]
-    return ParseExcelResult(transactions=[], row_count=0)
-
-
-@activity.defn(name="ValidateActivity")
-async def _mock_validate(_input):  # type: ignore[no-untyped-def]
-    return ValidateResult(status=ValidationStatus.ok, validated_count=0)
-
-
-@activity.defn(name="EmitWebhookActivity")
-async def _mock_emit(_input):  # type: ignore[no-untyped-def]
-    return EmitWebhookResult(enqueued=True, http_status=200)
-
-
-@activity.defn(name="OTPSignalAwaitActivity")
-async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
-    return OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=0)
-
-
-# ---------------------------------------------------------------------------
-# Test
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -108,15 +55,7 @@ async def test_scrape_job_workflow_replay_is_deterministic() -> None:
             env.client,
             task_queue="replay-test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=[
-                _mock_login_success,
-                _mock_navigate,
-                _mock_download,
-                _mock_parse_excel,
-                _mock_validate,
-                _mock_emit,
-                _mock_otp_keepalive,
-            ],
+            activities=WORKFLOW_MOCK_ACTIVITIES_HAPPY,
             activity_executor=ThreadPoolExecutor(max_workers=2),
         ):
             handle = await env.client.start_workflow(

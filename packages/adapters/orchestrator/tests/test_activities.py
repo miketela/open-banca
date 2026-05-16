@@ -12,20 +12,17 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from open_banca_domain.entities.breakage_event import BreakageEvent
+from open_banca_domain.entities.webhook_event import WebhookEventType
 from open_banca_orchestrator.activities.download_excel import (
     DownloadExcelInput,
     DownloadPeriod,
     download_excel,
 )
-from open_banca_orchestrator.activities.emit_webhook import (
-    EmitWebhookInput,
-    WebhookEvent,
-    WebhookEventType,
-    emit_webhook,
-)
+from open_banca_orchestrator.activities.emit_webhook import EmitWebhookInput, emit_webhook
 from open_banca_orchestrator.activities.judge import JudgeInput
 from open_banca_orchestrator.activities.login import (
     BrowserSessionToken,
@@ -296,17 +293,15 @@ def test_remapper_agent_input_validates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_emit_webhook_raises_not_implemented(env: ActivityEnvironment) -> None:
-    """EmitWebhookActivity skeleton raises NotImplementedError."""
+async def test_emit_webhook_requires_webhook_config(env: ActivityEnvironment) -> None:
+    """EmitWebhookActivity fails fast when webhook env is not configured."""
     input_ = EmitWebhookInput(
-        event=WebhookEvent(
-            event_id="evt-001",
-            event_type=WebhookEventType.job_completed,
-            job_id="job-001",
-            timestamp="2026-01-01T00:00:00Z",
-        )
+        event_id="evt-001",
+        event_type=WebhookEventType.JOB_COMPLETED.value,
+        job_id="job-001",
+        payload={},
     )
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ApplicationError, match="OPEN_BANCA_WEBHOOK_TARGET_URL"):
         await env.run(emit_webhook, input_)
 
 

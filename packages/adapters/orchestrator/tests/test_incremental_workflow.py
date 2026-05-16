@@ -16,6 +16,12 @@ from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
+from workflow_activity_mocks import (
+    mock_cleanup_sandbox,
+    mock_list_accounts,
+    mock_persist_result,
+    mock_spawn_sandbox,
+)
 
 from open_banca_orchestrator.activities.download_excel import DownloadExcelResult
 from open_banca_orchestrator.activities.emit_webhook import EmitWebhookResult
@@ -84,7 +90,7 @@ async def _mock_validate(_input):  # type: ignore[no-untyped-def]
 
 @activity.defn(name="EmitWebhookActivity")
 async def _mock_emit(_input):  # type: ignore[no-untyped-def]
-    return EmitWebhookResult(enqueued=True, event_id="evt-incr-001", http_status=200)
+    return EmitWebhookResult(enqueued=True, event_id="evt-incr-001")
 
 
 @activity.defn(name="OTPSignalAwaitActivity")
@@ -93,6 +99,10 @@ async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
 
 
 _ALL_MOCK_ACTIVITIES = [
+    mock_spawn_sandbox,
+    mock_cleanup_sandbox,
+    mock_persist_result,
+    mock_list_accounts,
     _mock_login_success,
     _mock_navigate,
     _mock_download_capture,
