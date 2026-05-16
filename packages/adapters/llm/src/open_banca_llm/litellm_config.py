@@ -15,13 +15,21 @@ from __future__ import annotations
 
 import logging
 
+from open_banca_llm.router import resolve_model
+
 logger = logging.getLogger(__name__)
 
-# Default model for Mapper / Remapper
-MAPPER_MODEL = "anthropic/claude-sonnet-4-6"
 
-# Default model for Validator / Judge
-JUDGE_MODEL = "deepseek/deepseek-chat"
+def _safe_resolve(agent: str, fallback: str) -> str:
+    try:
+        return resolve_model(agent)  # type: ignore[arg-type]
+    except Exception:
+        return fallback
+
+
+# Backward-compat constants — thin getters over the router.
+MAPPER_MODEL = _safe_resolve("mapper", "anthropic/claude-sonnet-4-6")
+JUDGE_MODEL = _safe_resolve("judge", "deepseek/deepseek-chat")
 
 
 def build_litellm_model(

@@ -24,12 +24,15 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 # ---------------------------------------------------------------------------
-# Cost helpers (reuse same DeepSeek pricing as validator)
+# Cost helpers — delegated to unified router
 # ---------------------------------------------------------------------------
 
-_DEEPSEEK_INPUT_COST_PER_M = Decimal("0.27")
-_DEEPSEEK_OUTPUT_COST_PER_M = Decimal("1.10")
+from open_banca_llm.router import compute_cost as _router_compute_cost
+from open_banca_llm.router import get_cost_cap as _router_get_cost_cap
+from open_banca_llm.router import resolve_model as _router_resolve_model
+from open_banca_llm.router import to_pydantic_ai_model_str as _to_pai
 
+# Backward-compat constant (DeepSeek default).
 JUDGE_COST_CAP_USD = Decimal("0.02")
 
 
@@ -42,11 +45,9 @@ class CostCapExceeded(Exception):
         self.cap = cap
 
 
-def _compute_cost(input_tokens: int, output_tokens: int) -> Decimal:
-    return (
-        Decimal(input_tokens) / Decimal(1_000_000) * _DEEPSEEK_INPUT_COST_PER_M
-        + Decimal(output_tokens) / Decimal(1_000_000) * _DEEPSEEK_OUTPUT_COST_PER_M
-    )
+def _compute_cost(input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat") -> Decimal:
+    """Compute USD cost via the unified router."""
+    return _router_compute_cost(model, input_tokens=input_tokens, output_tokens=output_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -158,14 +159,33 @@ class JudgeAgent:
     ) -> None:
         self._model: Model | str | None = model
         self._cost_cap = cost_cap_usd
-        # Agent lazily constructed on first call to avoid requiring DEEPSEEK_API_KEY
-        # when the JudgeAgent is instantiated in tests without a model override.
+        self._cap_is_default = cost_cap_usd == JUDGE_COST_CAP_USD
+        self._resolved_model_str: str | None = None
         self._agent: Agent[None, _LLMJudgeOutput] | None = None
+
+    def _ensure_model_resolved(self) -> str:
+        """Resolve the model string (for cost computation) without building the Agent."""
+        if self._resolved_model_str is not None:
+            return self._resolved_model_str
+        if self._model is not None:
+            self._resolved_model_str = str(self._model)
+        else:
+            try:
+                self._resolved_model_str = _router_resolve_model("judge")
+            except Exception:
+                self._resolved_model_str = "deepseek/deepseek-chat"
+            if self._cap_is_default:
+                self._cost_cap = _router_get_cost_cap("judge", self._resolved_model_str)
+        return self._resolved_model_str
 
     def _get_agent(self) -> Agent[None, _LLMJudgeOutput]:
         """Lazily create (or return cached) the PydanticAI Agent."""
         if self._agent is None:
-            model: Model | str = self._model or "deepseek:deepseek-chat"
+            if self._model is not None:
+                model: Model | str = self._model
+            else:
+                model_str = self._ensure_model_resolved()
+                model = _to_pai(model_str)
             self._agent = Agent(
                 model,
                 output_type=_LLMJudgeOutput,
@@ -211,10 +231,12 @@ class JudgeAgent:
 
         prompt = self._build_prompt(event, clean_dom, clean_summary)
 
+        model_str = self._ensure_model_resolved()
+
         # Pre-estimate cost
         estimated_input_tokens = len(prompt) // 4
         estimated_output_tokens = 150
-        projected_cost = _compute_cost(estimated_input_tokens, estimated_output_tokens)
+        projected_cost = _compute_cost(estimated_input_tokens, estimated_output_tokens, model_str)
 
         if projected_cost > self._cost_cap:
             raise CostCapExceeded(projected_cost, self._cost_cap)
@@ -225,6 +247,7 @@ class JudgeAgent:
         actual_cost = _compute_cost(
             usage.input_tokens or estimated_input_tokens,
             usage.output_tokens or estimated_output_tokens,
+            model_str,
         )
 
         if actual_cost > self._cost_cap:

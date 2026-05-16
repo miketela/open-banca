@@ -22,14 +22,15 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 # ---------------------------------------------------------------------------
-# Cost helpers
+# Cost helpers — delegated to unified router
 # ---------------------------------------------------------------------------
 
-# DeepSeek V3 pricing (USD per 1M tokens, as of 2025)
-_DEEPSEEK_INPUT_COST_PER_M = Decimal("0.27")
-_DEEPSEEK_OUTPUT_COST_PER_M = Decimal("1.10")
+from open_banca_llm.router import compute_cost as _router_compute_cost
+from open_banca_llm.router import get_cost_cap as _router_get_cost_cap
+from open_banca_llm.router import resolve_model as _router_resolve_model
+from open_banca_llm.router import to_pydantic_ai_model_str as _to_pai
 
-# Validator cost cap
+# Backward-compat constant (DeepSeek default); agents should prefer dynamic cap.
 VALIDATOR_COST_CAP_USD = Decimal("0.05")
 
 
@@ -42,12 +43,9 @@ class CostCapExceeded(Exception):
         self.cap = cap
 
 
-def _compute_cost(input_tokens: int, output_tokens: int) -> Decimal:
-    """Compute approximate USD cost for a DeepSeek V3 call."""
-    return (
-        Decimal(input_tokens) / Decimal(1_000_000) * _DEEPSEEK_INPUT_COST_PER_M
-        + Decimal(output_tokens) / Decimal(1_000_000) * _DEEPSEEK_OUTPUT_COST_PER_M
-    )
+def _compute_cost(input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat") -> Decimal:
+    """Compute USD cost via the unified router."""
+    return _router_compute_cost(model, input_tokens=input_tokens, output_tokens=output_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -252,14 +250,33 @@ class ValidatorAgent:
     ) -> None:
         self._model: Model | str | None = model
         self._cost_cap = cost_cap_usd
-        # Agent is lazily constructed on first LLM call to avoid requiring
-        # DEEPSEEK_API_KEY even when the heuristic path is sufficient.
+        self._cap_is_default = cost_cap_usd == VALIDATOR_COST_CAP_USD
+        self._resolved_model_str: str | None = None
         self._agent: Agent[None, _LLMValidationOutput] | None = None
+
+    def _ensure_model_resolved(self) -> str:
+        """Resolve the model string (for cost computation) without building the Agent."""
+        if self._resolved_model_str is not None:
+            return self._resolved_model_str
+        if self._model is not None:
+            self._resolved_model_str = str(self._model)
+        else:
+            try:
+                self._resolved_model_str = _router_resolve_model("validator")
+            except Exception:
+                self._resolved_model_str = "deepseek/deepseek-chat"
+            if self._cap_is_default:
+                self._cost_cap = _router_get_cost_cap("validator", self._resolved_model_str)
+        return self._resolved_model_str
 
     def _get_agent(self) -> Agent[None, _LLMValidationOutput]:
         """Lazily create (or return cached) the PydanticAI Agent."""
         if self._agent is None:
-            model: Model | str = self._model or "deepseek:deepseek-chat"
+            if self._model is not None:
+                model: Model | str = self._model
+            else:
+                model_str = self._ensure_model_resolved()
+                model = _to_pai(model_str)
             self._agent = Agent(
                 model,
                 output_type=_LLMValidationOutput,
@@ -325,10 +342,12 @@ class ValidatorAgent:
         # Ambiguous (only soft issues) → LLM call
         context = self._build_llm_context(transactions, reported_balance, heuristic_issues)
 
+        model_str = self._ensure_model_resolved()
+
         # Estimate tokens (rough: 4 chars per token)
         estimated_input_tokens = len(context) // 4
         estimated_output_tokens = 200
-        projected_cost = _compute_cost(estimated_input_tokens, estimated_output_tokens)
+        projected_cost = _compute_cost(estimated_input_tokens, estimated_output_tokens, model_str)
 
         if projected_cost > self._cost_cap:
             raise CostCapExceeded(projected_cost, self._cost_cap)
@@ -340,6 +359,7 @@ class ValidatorAgent:
         actual_cost = _compute_cost(
             usage.input_tokens or estimated_input_tokens,
             usage.output_tokens or estimated_output_tokens,
+            model_str,
         )
 
         if actual_cost > self._cost_cap:

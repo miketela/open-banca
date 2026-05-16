@@ -173,21 +173,18 @@ class CostTrackingChatModel:
         return result
 
     def _compute_cost(self, result: ChatInvokeCompletion[Any]) -> float | None:
-        """Try to use litellm's pricing table; fall back to None (tracker uses defaults)."""
+        """Compute cost via the unified router (litellm pricing table)."""
         usage = result.usage
         if usage is None:
             return None
-        try:
-            import litellm  # type: ignore[import-untyped]
+        from open_banca_llm.router import compute_cost as _router_compute_cost  # noqa: PLC0415
 
-            cost = litellm.completion_cost(
-                model=self.model,
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-            )
-            return float(cost)
-        except Exception:
-            return None
+        cost = _router_compute_cost(
+            self.model,
+            input_tokens=usage.prompt_tokens,
+            output_tokens=usage.completion_tokens,
+        )
+        return float(cost) if cost > 0 else None
 
 
 # ── Fake model for tests (no real LLM calls) ─────────────────────────────────
