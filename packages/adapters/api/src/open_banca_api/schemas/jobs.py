@@ -1,4 +1,5 @@
 """Request/response schemas for job management endpoints (ADR-0021)."""
+
 from __future__ import annotations
 
 import re

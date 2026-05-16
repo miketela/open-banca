@@ -90,8 +90,8 @@ _SYSTEM_PROMPT = (
     "Analyse the DOM excerpt and context provided, then output a JSON patch "
     "describing the corrected navigation steps for the affected window ONLY. "
     "Return ONLY valid JSON — no markdown fences, no prose. "
-    "Schema: {\"target_step_index\": int, \"new_steps\": [...], "
-    "\"rationale\": \"...\", \"confidence\": 0.0-1.0, \"risk\": \"low|med|high\"}"
+    'Schema: {"target_step_index": int, "new_steps": [...], '
+    '"rationale": "...", "confidence": 0.0-1.0, "risk": "low|med|high"}'
 )
 
 
@@ -133,6 +133,7 @@ def _build_remap_prompt(
 # ---------------------------------------------------------------------------
 # PII redaction helper (reuses JudgeAgent pattern + RedactFilter)
 # ---------------------------------------------------------------------------
+
 
 def _redact_dom(dom: str, redact_config: RedactConfig | None = None) -> str:
     """Apply RedactFilter to a DOM excerpt before sending to LLM."""

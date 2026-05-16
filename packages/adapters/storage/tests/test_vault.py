@@ -10,6 +10,7 @@ TDD coverage (per task-5 acceptance criteria):
 6. store_credential / fetch_credential via SecretVault.
 7. store_credential does NOT appear as plaintext in the DB file.
 """
+
 from __future__ import annotations
 
 import os
@@ -57,6 +58,7 @@ def vault_db(tmp_path: Path) -> tuple[SecretVault, ConnectionPool]:
 
 # ── 1. KAT — Argon2id DB-level derivation ────────────────────────────────────
 
+
 def test_argon2id_db_kat() -> None:
     """Known-answer-test: Argon2idKeyDerivation is deterministic.
 
@@ -99,6 +101,7 @@ def test_argon2id_row_params_meet_adr() -> None:
 
 
 # ── 2. AES-GCM roundtrip ─────────────────────────────────────────────────────
+
 
 def test_aesgcm_roundtrip() -> None:
     """Encrypt then decrypt a known plaintext; must return the original."""
@@ -155,6 +158,7 @@ def test_aesgcm_tamper_detect() -> None:
 
 # ── 3. Zeroize verification ───────────────────────────────────────────────────
 
+
 def test_wipe_row_key_zeroizes() -> None:
     """After wipe_row_key, the buffer must be all zeros."""
     import secrets as sec
@@ -171,6 +175,7 @@ def test_wipe_row_key_zeroizes() -> None:
 
 
 # ── 4. SecretVault store + fetch roundtrip ────────────────────────────────────
+
 
 @pytest.mark.unit()
 def test_vault_store_and_fetch(vault_db: tuple[SecretVault, ConnectionPool]) -> None:
@@ -206,9 +211,7 @@ def test_vault_plaintext_not_in_db_file(
     # Find the DB file by looking at the pool's path attribute
     db_path = pool._db_path
     raw = db_path.read_bytes()
-    assert plaintext.encode("utf-8") not in raw, (
-        "Plaintext credential found unencrypted in DB file"
-    )
+    assert plaintext.encode("utf-8") not in raw, "Plaintext credential found unencrypted in DB file"
 
 
 @pytest.mark.unit()
@@ -220,6 +223,7 @@ def test_vault_fetch_unknown_ref(vault_db: tuple[SecretVault, ConnectionPool]) -
 
 
 # ── 5. rotate_master flow ─────────────────────────────────────────────────────
+
 
 @pytest.mark.unit()
 def test_rotate_master_re_encrypts(tmp_path: Path) -> None:
@@ -249,7 +253,9 @@ def test_rotate_master_re_encrypts(tmp_path: Path) -> None:
 def test_rotate_master_requires_env_var(vault_db: tuple[SecretVault, ConnectionPool]) -> None:
     """rotate_master() must raise OSError if OPEN_BANCA_MASTER_PASSPHRASE_NEW is unset."""
     vault, _pool = vault_db
-    env_without_new = {k: v for k, v in os.environ.items() if k != "OPEN_BANCA_MASTER_PASSPHRASE_NEW"}
+    env_without_new = {
+        k: v for k, v in os.environ.items() if k != "OPEN_BANCA_MASTER_PASSPHRASE_NEW"
+    }
     with patch.dict(os.environ, env_without_new, clear=True):
         with pytest.raises(OSError):
             vault.rotate_master()

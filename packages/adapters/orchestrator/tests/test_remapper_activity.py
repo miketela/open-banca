@@ -77,9 +77,7 @@ def _make_valid_patch_json() -> str:
     return json.dumps(
         {
             "target_step_index": 2,
-            "new_steps": [
-                {"step_id": "s3-fixed", "action": "click", "target": "#btn-submit"}
-            ],
+            "new_steps": [{"step_id": "s3-fixed", "action": "click", "target": "#btn-submit"}],
             "rationale": "Selector changed from #submit to #btn-submit",
             "confidence": 0.99,
             "risk": "low",

@@ -2,4 +2,4 @@
 
 from open_banca_llm.validator.agent import ValidationReport, ValidationVerdict, ValidatorAgent
 
-__all__ = ["ValidatorAgent", "ValidationReport", "ValidationVerdict"]
+__all__ = ["ValidationReport", "ValidationVerdict", "ValidatorAgent"]

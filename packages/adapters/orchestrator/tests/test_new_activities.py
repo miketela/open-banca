@@ -38,9 +38,7 @@ class TestSpawnSandbox:
         mock_runner.spawn.return_value = mock_token
         mock_cls.return_value = mock_runner
 
-        result = await spawn_sandbox(
-            SpawnSandboxInput(job_id="job-1", bank_id="banco_general")
-        )
+        result = await spawn_sandbox(SpawnSandboxInput(job_id="job-1", bank_id="banco_general"))
 
         assert isinstance(result, SpawnSandboxResult)
         assert result.container_id == "abc123"
@@ -64,9 +62,7 @@ class TestCleanupSandbox:
         mock_runner.kill.return_value = None
         mock_cls.return_value = mock_runner
 
-        result = await cleanup_sandbox(
-            CleanupSandboxInput(container_id="abc123")
-        )
+        result = await cleanup_sandbox(CleanupSandboxInput(container_id="abc123"))
 
         assert isinstance(result, CleanupSandboxResult)
         assert result.cleaned is True
@@ -84,9 +80,7 @@ class TestCleanupSandbox:
         mock_runner.kill.side_effect = Exception("container not found: 404")
         mock_cls.return_value = mock_runner
 
-        result = await cleanup_sandbox(
-            CleanupSandboxInput(container_id="gone123")
-        )
+        result = await cleanup_sandbox(CleanupSandboxInput(container_id="gone123"))
 
         assert result.cleaned is True
 
@@ -122,9 +116,7 @@ class TestListAccounts:
             "open_banca_orchestrator.activities.list_accounts._BANKS_DIR",
             Path("/nonexistent"),
         ):
-            result = await list_accounts(
-                ListAccountsInput(bank_id="banco_general")
-            )
+            result = await list_accounts(ListAccountsInput(bank_id="banco_general"))
         assert len(result.accounts) == 1
         assert result.accounts[0].account_id == "default-account"
 
@@ -144,9 +136,7 @@ class TestListAccounts:
             "open_banca_orchestrator.activities.list_accounts._BANKS_DIR",
             tmp_path,
         ):
-            result = await list_accounts(
-                ListAccountsInput(bank_id="test_bank")
-            )
+            result = await list_accounts(ListAccountsInput(bank_id="test_bank"))
         assert len(result.accounts) == 1
         assert result.accounts[0].account_id == "ACC-100"
 
@@ -157,7 +147,9 @@ class TestWorkerRegistration:
     def test_all_new_activities_in_async_list(self) -> None:
         from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES
 
-        activity_names = [getattr(a, "__temporal_activity_definition").name for a in _ASYNC_ACTIVITIES]
+        activity_names = [
+            getattr(a, "__temporal_activity_definition").name for a in _ASYNC_ACTIVITIES
+        ]
 
         assert "SpawnSandboxActivity" in activity_names
         assert "CleanupSandboxActivity" in activity_names

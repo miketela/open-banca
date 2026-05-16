@@ -39,13 +39,11 @@ jobs:
 
       - name: Python dependency audit (pip-audit)
         run: |
-          uv run pip-audit --requirement <(uv pip compile pyproject.toml --all-extras 2>/dev/null || echo "") \
-            --severity high \
+          # pip-audit 2.x audits the synced venv (-l). Requires pip-audit in dev deps.
+          uv run pip-audit -l \
             --format cyclonedx-json \
             --output pip-audit-results.json || true
-          # Fail on HIGH/CRITICAL
-          uv run pip-audit --requirement <(uv pip compile pyproject.toml --all-extras 2>/dev/null || echo "") \
-            --severity high
+          uv run pip-audit -l
         continue-on-error: false
 
       - name: Install Trivy

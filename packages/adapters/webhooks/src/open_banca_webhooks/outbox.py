@@ -146,9 +146,7 @@ class WebhookOutboxRepository:
         else:
             # Schedule next retry
             delay = RETRY_DELAYS_SECONDS[new_attempts]
-            next_at = (
-                datetime.now(tz=UTC) + timedelta(seconds=delay)
-            ).isoformat()
+            next_at = (datetime.now(tz=UTC) + timedelta(seconds=delay)).isoformat()
             with self._lock:
                 self._conn.execute(
                     """
@@ -248,9 +246,7 @@ class WebhookOutboxRepository:
 
     def evict_old_nonces(self, max_age_seconds: int = 120) -> int:
         """Remove nonces older than max_age_seconds. Returns count removed."""
-        cutoff = (
-            datetime.now(tz=UTC) - timedelta(seconds=max_age_seconds)
-        ).isoformat()
+        cutoff = (datetime.now(tz=UTC) - timedelta(seconds=max_age_seconds)).isoformat()
         with self._lock:
             cur = self._conn.execute(
                 "DELETE FROM webhook_nonces WHERE created_at < ?",

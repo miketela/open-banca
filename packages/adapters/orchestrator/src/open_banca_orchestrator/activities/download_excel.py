@@ -57,7 +57,7 @@ class DownloadExcelActivity:
 
 
 @activity.defn(name="DownloadExcelActivity")
-async def download_excel(input: DownloadExcelInput) -> DownloadExcelResult:  # noqa: A002
+async def download_excel(input: DownloadExcelInput) -> DownloadExcelResult:
     """Click the export button, wait for download, and return the file path.
 
     Sends heartbeats every 10 s during the download wait.

@@ -61,6 +61,7 @@ def _build_cost_counter() -> Any | None:
     except Exception:  # type: ignore[broad-except]
         return None  # OTel setup failure must not crash the mapper
 
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -177,7 +178,7 @@ class CostTrackingChatModel:
         usage = result.usage
         if usage is None:
             return None
-        from open_banca_llm.router import compute_cost as _router_compute_cost  # noqa: PLC0415
+        from open_banca_llm.router import compute_cost as _router_compute_cost
 
         cost = _router_compute_cost(
             self.model,
@@ -304,6 +305,7 @@ def interactive_prompt(
     if prompt_fn is None:
         try:
             import typer  # type: ignore[import-untyped]
+
             prompt_fn = lambda msg, **kw: typer.prompt(msg, **kw)  # noqa: E731
         except ImportError:
             prompt_fn = lambda msg, **kw: input(f"{msg}: ")  # noqa: E731
@@ -326,7 +328,9 @@ def interactive_prompt(
             default="",
         )
         if not answer:
-            logger.warning("interactive_prompt: empty answer for field_key=%s — skipping", field_key)
+            logger.warning(
+                "interactive_prompt: empty answer for field_key=%s — skipping", field_key
+            )
             return None
 
         return str(answer)
@@ -393,6 +397,7 @@ class MapperAgent:
             # translation triggers Anthropic "compiled grammar too large" with
             # browser-use's full action set. Native client avoids strict-mode.
             import os as _os
+
             from browser_use.llm.anthropic.chat import ChatAnthropic  # type: ignore[import-untyped]
 
             _anth_model = self._model_name.split("/", 1)[-1]
@@ -548,16 +553,16 @@ class MapperAgent:
                 question_selector=question_selector,
             )
             if answer is None:
-                logger.info(
-                    "MapperAgent: operator skipped preload for field_key=%s", field_key
-                )
+                logger.info("MapperAgent: operator skipped preload for field_key=%s", field_key)
                 continue
 
             # Compute cache key (bank_id:credential_ref:field_key:normalize(question_text))
             # In CLI preload, we don't have the live question text — use field_key as proxy.
             # The hash will differ from runtime (which uses live DOM text), so this is
             # a best-effort preload. Runtime will still cache on first real hit.
-            from open_banca_browser.step_executors.prompt_user import compute_question_hash  # noqa: PLC0415
+            from open_banca_browser.step_executors.prompt_user import (
+                compute_question_hash,
+            )
 
             question_hash = compute_question_hash(
                 bank_id=bank_id,
@@ -573,9 +578,7 @@ class MapperAgent:
                     answer=answer,
                     field_key=field_key,
                 )
-                logger.info(
-                    "MapperAgent: preloaded vault answer for field_key=%s", field_key
-                )
+                logger.info("MapperAgent: preloaded vault answer for field_key=%s", field_key)
             except Exception as exc:
                 logger.warning(
                     "MapperAgent: failed to preload vault for field_key=%s: %s",

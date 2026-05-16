@@ -10,6 +10,7 @@ TDD coverage per task-5 acceptance criteria:
 5. RedactFilter.filter() does not drop records (always returns True).
 6. RedactStream wraps a stream handler and scrubs output.
 """
+
 from __future__ import annotations
 
 import io
@@ -89,9 +90,7 @@ def test_secret_canary_not_leaked_in_log(
     lgr.error("Error processing payload: %s", f"data={secret_canary}")
 
     output = buf.getvalue()
-    assert secret_canary not in output, (
-        f"SECRET_CANARY_VALUE leaked into log output: {output!r}"
-    )
+    assert secret_canary not in output, f"SECRET_CANARY_VALUE leaked into log output: {output!r}"
     assert _REDACTED in output
 
 
@@ -169,9 +168,13 @@ def test_bearer_token_scrubbed() -> None:
     config = RedactConfig()
     f = RedactFilter(config=config)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg='Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.payload.signature',
-        args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.payload.signature",
+        args=(),
+        exc_info=None,
     )
     f.filter(record)
     assert "eyJhbGciOiJSUzI1NiJ9" not in record.msg
@@ -183,9 +186,13 @@ def test_json_password_field_scrubbed() -> None:
     config = RedactConfig()
     f = RedactFilter(config=config)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
         msg='{"username": "alice", "password": "my-secret-pass"}',
-        args=(), exc_info=None,
+        args=(),
+        exc_info=None,
     )
     f.filter(record)
     assert "my-secret-pass" not in record.msg
@@ -197,9 +204,13 @@ def test_16_digit_account_number_scrubbed() -> None:
     config = RedactConfig()
     f = RedactFilter(config=config)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
         msg="Processing account 1234567890123456 for bank",
-        args=(), exc_info=None,
+        args=(),
+        exc_info=None,
     )
     f.filter(record)
     assert "1234567890123456" not in record.msg
@@ -211,9 +222,13 @@ def test_16_digit_in_args_scrubbed() -> None:
     config = RedactConfig()
     f = RedactFilter(config=config)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
         msg="Account: %s, amount: %s",
-        args=("1234567890123456", "100.00"), exc_info=None,
+        args=("1234567890123456", "100.00"),
+        exc_info=None,
     )
     f.filter(record)
     assert isinstance(record.args, tuple)
@@ -272,9 +287,13 @@ def test_filter_always_returns_true() -> None:
     f = RedactFilter(config=config)
 
     record = logging.LogRecord(
-        name="test", level=logging.DEBUG, pathname="", lineno=0,
+        name="test",
+        level=logging.DEBUG,
+        pathname="",
+        lineno=0,
         msg="contains secret here",
-        args=(), exc_info=None,
+        args=(),
+        exc_info=None,
     )
     result = f.filter(record)
     assert result is True
@@ -325,9 +344,13 @@ def test_dict_args_scrubbed_via_filter(secret_canary: str) -> None:
 
     # Build record with tuple args, then manually set dict args
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
         msg="%(credential)s was stored",
-        args=(), exc_info=None,
+        args=(),
+        exc_info=None,
     )
     # Manually set dict args (as structured loggers do)
     record.args = {"credential": secret_canary}  # type: ignore[assignment]

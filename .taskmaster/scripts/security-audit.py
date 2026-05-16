@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Auto-generate security checklist based on codebase scan."""
-import json, os, re, sys
+
+import json
+import re
 from pathlib import Path
+
 
 def scan_patterns():
     """Scan for security-relevant patterns in codebase."""
@@ -34,47 +37,65 @@ def scan_patterns():
 
     checklist = []
     if "authentication" in categories:
-        checklist.extend([
-            "Passwords hashed with bcrypt (cost >= 10)",
-            "Session tokens cryptographically secure",
-            "Rate limiting on auth endpoints",
-        ])
+        checklist.extend(
+            [
+                "Passwords hashed with bcrypt (cost >= 10)",
+                "Session tokens cryptographically secure",
+                "Rate limiting on auth endpoints",
+            ]
+        )
     if "database" in categories:
-        checklist.extend([
-            "All queries use parameterized statements",
-            "No SQL injection vulnerabilities",
-            "Database credentials not in source code",
-        ])
+        checklist.extend(
+            [
+                "All queries use parameterized statements",
+                "No SQL injection vulnerabilities",
+                "Database credentials not in source code",
+            ]
+        )
     if "api" in categories:
-        checklist.extend([
-            "HTTPS enforced in production",
-            "CSRF protection enabled",
-            "Input validation on all endpoints",
-            "Security headers set (CSP, X-Frame-Options)",
-        ])
+        checklist.extend(
+            [
+                "HTTPS enforced in production",
+                "CSRF protection enabled",
+                "Input validation on all endpoints",
+                "Security headers set (CSP, X-Frame-Options)",
+            ]
+        )
     if "encryption" in categories:
-        checklist.extend([
-            "Strong encryption algorithms used (AES-256)",
-            "Keys stored securely (not hardcoded)",
-        ])
+        checklist.extend(
+            [
+                "Strong encryption algorithms used (AES-256)",
+                "Keys stored securely (not hardcoded)",
+            ]
+        )
     if "environment" in categories:
-        checklist.extend([
-            ".env files in .gitignore",
-            "No secrets committed to repository",
-        ])
+        checklist.extend(
+            [
+                ".env files in .gitignore",
+                "No secrets committed to repository",
+            ]
+        )
 
     # Always include
-    checklist.extend([
-        "Dependencies checked for vulnerabilities (npm audit / pip audit)",
-        "Error messages do not leak internal details",
-    ])
+    checklist.extend(
+        [
+            "Dependencies checked for vulnerabilities (npm audit / pip audit)",
+            "Error messages do not leak internal details",
+        ]
+    )
 
-    print(json.dumps({
-        "ok": True,
-        "categories_detected": categories,
-        "findings_count": len(findings),
-        "checklist": checklist,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "categories_detected": categories,
+                "findings_count": len(findings),
+                "checklist": checklist,
+            },
+            indent=2,
+        )
+    )
+
 
 if __name__ == "__main__":
     scan_patterns()

@@ -1,4 +1,5 @@
 """Credential entity — reference only, no plaintext."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict

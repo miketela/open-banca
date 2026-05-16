@@ -42,9 +42,7 @@ class MapperAgentInput(BaseModel):
 
     job_id: str = Field(description="Parent job identifier")
     bank_id: str = Field(description="Bank to map")
-    run_id: str = Field(
-        description="Unique run ID for idempotency (bank_id + run_id)"
-    )
+    run_id: str = Field(description="Unique run ID for idempotency (bank_id + run_id)")
     sandbox_container_id: str = Field(
         description="Sandbox container with live browser for visual exploration"
     )
@@ -67,7 +65,7 @@ class MapperAgentActivity:
 
 
 @activity.defn(name="MapperAgentActivity")
-async def mapper_agent(input: MapperAgentInput) -> MapperAgentResult:  # noqa: A002
+async def mapper_agent(input: MapperAgentInput) -> MapperAgentResult:
     """Run the Mapper agent to generate map.json for a bank.
 
     PLACEHOLDER — wired in task 14 (MapBankWorkflow + MapperAgent).
@@ -79,6 +77,4 @@ async def mapper_agent(input: MapperAgentInput) -> MapperAgentResult:  # noqa: A
     TODO: call activity.heartbeat(step=step_name, explored=N) every 30 s.
     TODO: persist generated map.json to storage (cosign-signed community map).
     """
-    raise NotImplementedError(
-        "MapperAgentActivity not implemented — PLACEHOLDER, wired in task 14"
-    )
+    raise NotImplementedError("MapperAgentActivity not implemented — PLACEHOLDER, wired in task 14")

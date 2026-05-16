@@ -83,9 +83,7 @@ class TransferMatcher:
                     continue
                 if abs(credit.amount) != abs_debit:
                     continue
-                date_diff = abs(
-                    (debit.posted_at - credit.posted_at).total_seconds()
-                )
+                date_diff = abs((debit.posted_at - credit.posted_at).total_seconds())
                 window_seconds = self._window.total_seconds()
                 if date_diff > window_seconds:
                     continue

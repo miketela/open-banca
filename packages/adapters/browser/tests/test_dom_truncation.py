@@ -6,6 +6,7 @@ TDD coverage:
 - test_dom_truncation_exact_50kb: Exactly 50 KB is not truncated.
 - test_dom_truncation_marker_position: [TRUNCATED] marker appears at the end.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

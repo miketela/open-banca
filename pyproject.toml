@@ -25,6 +25,16 @@ members = [
     "packages/cli",
 ]
 
+[tool.uv]
+override-dependencies = [
+    "aiohttp>=3.13.4",
+    "litellm>=1.83.10",
+    "pillow>=12.2.0",
+    "pypdf>=6.10.2",
+    "python-dotenv>=1.2.2",
+    "requests>=2.33.0",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.9.0",
@@ -34,6 +44,7 @@ dev = [
     "hypothesis>=6.130.0",
     "pre-commit>=4.0.0",
     "detect-secrets>=1.5.0",
+    "pip-audit>=2.7.0",
     "respx>=0.22",
 ]
 
@@ -48,7 +59,11 @@ ignore = [
     "ANN401",  # Dynamically typed expressions (Any)
     "E501",    # line too long (handled by formatter)
 ]
-per-file-ignores = { "**/__init__.py" = ["F401", "ANN"], "**/tests/**" = ["ANN", "S101", "RUF100", "B017"] }
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401", "ANN"]
+"**/tests/**" = ["ANN", "S101", "RUF100", "B017"]
+".taskmaster/**" = ["ANN"]
+"**/test_threat_t27a_injection.py" = ["RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = [

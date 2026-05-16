@@ -8,10 +8,11 @@ TDD coverage:
 5. Missing field_key raises SelectorNotFound.
 6. compute_question_hash normalizes question text consistently.
 """
+
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -53,11 +54,28 @@ class _FakeVault:
     def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None:
         return self._answer
 
-    def store_security_answer(self, credential_id: str, question_hash: str, answer: str, *, field_key: str, ttl_days: int | None = None) -> None:
-        self.store_calls.append({"credential_id": credential_id, "question_hash": question_hash, "answer": answer, "field_key": field_key})
+    def store_security_answer(
+        self,
+        credential_id: str,
+        question_hash: str,
+        answer: str,
+        *,
+        field_key: str,
+        ttl_days: int | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "credential_id": credential_id,
+                "question_hash": question_hash,
+                "answer": answer,
+                "field_key": field_key,
+            }
+        )
 
 
-def _make_page(question_text: str = "¿Cuál es el color favorito de su madre?", *, selector_found: bool = True) -> MagicMock:
+def _make_page(
+    question_text: str = "¿Cuál es el color favorito de su madre?", *, selector_found: bool = True
+) -> MagicMock:
     """Build a minimal Playwright page mock."""
     page = MagicMock()
 
@@ -96,9 +114,7 @@ def test_cache_hit_fills_answer_input() -> None:
         credential_id="cred-001",
     )
 
-    # Verify fill was called
-    answer_locator = page.locator.return_value
-    # At least one locator's fill was called
+    # Verify fill was called (at least one locator's fill was called)
     assert page.locator.called
 
 
@@ -190,9 +206,15 @@ def test_missing_field_key_raises_selector_not_found() -> None:
 
 def test_compute_question_hash_normalizes_consistently() -> None:
     """Same question with different whitespace/case should produce same hash."""
-    h1 = compute_question_hash("banco-general", "cred-1", "security_q_pet", "¿Nombre de su primera mascota?")
-    h2 = compute_question_hash("banco-general", "cred-1", "security_q_pet", "  ¿Nombre de su primera mascota?  ")
-    h3 = compute_question_hash("banco-general", "cred-1", "security_q_pet", "¿NOMBRE DE SU PRIMERA MASCOTA?")
+    h1 = compute_question_hash(
+        "banco-general", "cred-1", "security_q_pet", "¿Nombre de su primera mascota?"
+    )
+    h2 = compute_question_hash(
+        "banco-general", "cred-1", "security_q_pet", "  ¿Nombre de su primera mascota?  "
+    )
+    h3 = compute_question_hash(
+        "banco-general", "cred-1", "security_q_pet", "¿NOMBRE DE SU PRIMERA MASCOTA?"
+    )
     assert h1 == h2, "Whitespace differences should normalize to same hash"
     assert h1 == h3, "Case differences should normalize to same hash"
 

@@ -1,4 +1,5 @@
 """ListAccounts use case — query all accounts for a bank."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

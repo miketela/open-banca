@@ -542,7 +542,9 @@ def _row_to_account(row: tuple[Any, ...]) -> AccountUnion:
             available_credit=Decimal(available_credit or "0"),
             cut_date=date.fromisoformat(cut_date) if cut_date else date.today(),
             min_payment=Decimal(min_payment or "0"),
-            payment_due_date=date.fromisoformat(payment_due_date) if payment_due_date else date.today(),
+            payment_due_date=date.fromisoformat(payment_due_date)
+            if payment_due_date
+            else date.today(),
             statement_balance=Decimal(statement_balance or "0"),
         )
     if account_type == "checking":

@@ -233,8 +233,12 @@ def test_dedup_level2_different_amounts(engine, account_id, conn):
 def test_dedup_level3_transfer(engine, account_id, account_b_id, conn):
     """Outflow from account A + inflow to account B of same amount/date → transfer pair."""
     posted = datetime(2024, 3, 10, 9, 0, 0, tzinfo=UTC)
-    debit = _make_tx(account_id, amount=Decimal("-200.00"), description="Transfer out", posted_at=posted)
-    credit = _make_tx(account_b_id, amount=Decimal("200.00"), description="Transfer in", posted_at=posted)
+    debit = _make_tx(
+        account_id, amount=Decimal("-200.00"), description="Transfer out", posted_at=posted
+    )
+    credit = _make_tx(
+        account_b_id, amount=Decimal("200.00"), description="Transfer in", posted_at=posted
+    )
 
     result = engine.ingest([debit, credit])
 
@@ -306,8 +310,12 @@ def test_dedup_level3_transfer_across_batches(engine, account_id, account_b_id, 
     on one run and account B on the next.
     """
     posted = datetime(2024, 3, 10, 9, 0, 0, tzinfo=UTC)
-    debit = _make_tx(account_id, amount=Decimal("-200.00"), description="Transfer out", posted_at=posted)
-    credit = _make_tx(account_b_id, amount=Decimal("200.00"), description="Transfer in", posted_at=posted)
+    debit = _make_tx(
+        account_id, amount=Decimal("-200.00"), description="Transfer out", posted_at=posted
+    )
+    credit = _make_tx(
+        account_b_id, amount=Decimal("200.00"), description="Transfer in", posted_at=posted
+    )
 
     # Ingest debit side first (simulates account A scraped earlier).
     result1 = engine.ingest([debit])
@@ -396,7 +404,9 @@ def test_unicode_normalization(engine, account_id, conn):
     # Ensure the raw strings differ.
     assert desc_ascii != desc_fullwidth
     # Ensure NFKC makes them identical.
-    assert unicodedata.normalize("NFKC", desc_ascii) == unicodedata.normalize("NFKC", desc_fullwidth)
+    assert unicodedata.normalize("NFKC", desc_ascii) == unicodedata.normalize(
+        "NFKC", desc_fullwidth
+    )
 
     fp_ascii = compute_fingerprint(
         account_id=account_id,

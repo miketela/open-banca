@@ -29,15 +29,25 @@ from temporalio.workflow import ActivityHandle
 with workflow.unsafe.imports_passed_through():
     import hashlib
 
+    from open_banca_domain.entities.webhook_event import WebhookEventType
+    from open_banca_orchestrator.activities.cleanup_sandbox import (
+        CleanupSandboxInput,
+        cleanup_sandbox,
+    )
     from open_banca_orchestrator.activities.download_excel import (
         DownloadExcelInput,
         DownloadPeriod,
         download_excel,
     )
-    from open_banca_domain.entities.webhook_event import WebhookEventType
     from open_banca_orchestrator.activities.emit_webhook import EmitWebhookInput, emit_webhook
     from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
+    from open_banca_orchestrator.activities.list_accounts import (
+        ListAccountsInput,
+        ListAccountsResult,
+        list_accounts,
+    )
     from open_banca_orchestrator.activities.login import (
+        BrowserSessionToken,
         LoginInput,
         LoginResult,
         LoginStatus,
@@ -48,37 +58,23 @@ with workflow.unsafe.imports_passed_through():
         OTPSignalAwaitInput,
         otp_signal_await,
     )
-    from open_banca_orchestrator.activities.human_input_await import (
-        HumanInputAwaitInput,
-        HumanInputAwaitResult,
-        human_input_await,
-    )
     from open_banca_orchestrator.activities.parse_excel import (
         ParseExcelInput,
         ParserConfig,
         TransactionRecord,
         parse_excel,
     )
-    from open_banca_orchestrator.activities.validate import ValidateInput, ValidateResult, validate
-    from open_banca_orchestrator.activities.spawn_sandbox import (
-        SpawnSandboxInput,
-        SpawnSandboxResult,
-        spawn_sandbox,
-    )
-    from open_banca_orchestrator.activities.cleanup_sandbox import (
-        CleanupSandboxInput,
-        cleanup_sandbox,
-    )
     from open_banca_orchestrator.activities.persist_result import (
         PersistAccountInfo,
         PersistResultInput,
         persist_result,
     )
-    from open_banca_orchestrator.activities.list_accounts import (
-        ListAccountsInput,
-        ListAccountsResult,
-        list_accounts,
+    from open_banca_orchestrator.activities.spawn_sandbox import (
+        SpawnSandboxInput,
+        SpawnSandboxResult,
+        spawn_sandbox,
     )
+    from open_banca_orchestrator.activities.validate import ValidateInput, ValidateResult, validate
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +304,7 @@ class ScrapeJobWorkflow:
     # -----------------------------------------------------------------------
 
     @workflow.run
-    async def run(self, input: ScrapeJobInput) -> ScrapeJobResult:  # noqa: A002, PLR0911
+    async def run(self, input: ScrapeJobInput) -> ScrapeJobResult:
         """Orchestrate the full scraping pipeline.
 
         Sequential steps per orchestrator.md §Topología:
@@ -583,12 +579,10 @@ class ScrapeJobWorkflow:
         # Emit job.remap_proposed webhook then wait for remap_approved signal.
         # ------------------------------------------------------------------
         if validate_result.breakage_detected:
-            breakage_hash = hashlib.sha256(
-                str(validate_result.issues).encode()
-            ).hexdigest()
+            breakage_hash = hashlib.sha256(str(validate_result.issues).encode()).hexdigest()
 
             # Build a synthetic BreakageEvent from validation failures
-            from open_banca_domain.entities.breakage_event import (  # noqa: PLC0415
+            from open_banca_domain.entities.breakage_event import (
                 BreakageEvent as DomainBreakageEvent,
             )
 
@@ -748,14 +742,12 @@ class ScrapeJobWorkflow:
         )
 
 
-def _placeholder_session_token():  # type: ignore[return]
+def _placeholder_session_token() -> BrowserSessionToken:
     """Return a placeholder BrowserSessionToken when login didn't return one.
 
     Used only in code paths where status==success (no sidecar needed).
     Will be removed when LoginActivity is fully implemented.
     """
-    from open_banca_orchestrator.activities.login import BrowserSessionToken  # noqa: PLC0415
-
     return BrowserSessionToken(
         container_id="placeholder",
         socket_path="/run/banca/sidecar.sock",

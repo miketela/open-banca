@@ -1,4 +1,5 @@
 """Exceptions for the sandbox adapter (ADR-0009)."""
+
 from __future__ import annotations
 
 

@@ -50,7 +50,7 @@ class PersistResultActivity:
 
 
 @activity.defn(name="PersistResultActivity")
-async def persist_result(input: PersistResultInput) -> PersistResultResult:  # noqa: A002
+async def persist_result(input: PersistResultInput) -> PersistResultResult:
     """Persist scrape results to the encrypted SQLCipher storage.
 
     Uses ``SqliteJobStore.save_job()``, ``save_account()``, and
@@ -63,12 +63,12 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:  # n
         len(input.transactions),
     )
 
-    from open_banca_domain.entities.job import Job, JobMode, JobStatus  # noqa: PLC0415
-    from open_banca_domain.entities.transaction import Transaction  # noqa: PLC0415
-    from open_banca_storage.config import get_settings as get_storage_settings  # noqa: PLC0415
-    from open_banca_storage.connection import Connection  # noqa: PLC0415
-    from open_banca_storage.migrations import ensure_schema  # noqa: PLC0415
-    from open_banca_storage.repositories.job_store import SqliteJobStore  # noqa: PLC0415
+    from open_banca_domain.entities.job import Job, JobMode, JobStatus
+    from open_banca_domain.entities.transaction import Transaction
+    from open_banca_storage.config import get_settings as get_storage_settings
+    from open_banca_storage.connection import Connection
+    from open_banca_storage.migrations import ensure_schema
+    from open_banca_storage.repositories.job_store import SqliteJobStore
 
     passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "")
     settings = get_storage_settings()
@@ -103,9 +103,7 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:  # n
         store.save_transaction_with_job(tx, input.job_id)
         tx_count += 1
 
-    activity.logger.info(
-        "persist complete: job_id=%s transactions=%d", input.job_id, tx_count
-    )
+    activity.logger.info("persist complete: job_id=%s transactions=%d", input.job_id, tx_count)
 
     return PersistResultResult(
         persisted_accounts=len(input.accounts),

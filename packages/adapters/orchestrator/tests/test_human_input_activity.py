@@ -9,10 +9,10 @@ TDD coverage:
 3. HumanInputAwaitInput / HumanInputAwaitResult schema validation.
 4. Activity is registered with correct @activity.defn name.
 """
+
 from __future__ import annotations
 
 import pytest
-from temporalio import activity
 
 from open_banca_orchestrator.activities.human_input_await import (
     HumanInputAwaitActivity,
@@ -21,7 +21,6 @@ from open_banca_orchestrator.activities.human_input_await import (
     human_input_await,
 )
 from open_banca_orchestrator.activities.login import BrowserSessionToken
-
 
 # ── Schema tests ──────────────────────────────────────────────────────────────
 
@@ -75,7 +74,6 @@ def test_human_input_await_result_custom() -> None:
 
 def test_human_input_await_activity_name() -> None:
     """human_input_await must be registered with name 'HumanInputAwaitActivity'."""
-    defn = activity.defn
     # Check the function has the Temporal activity decorator applied
     assert hasattr(human_input_await, "__temporal_activity_definition")
     act_def = human_input_await.__temporal_activity_definition  # type: ignore[attr-defined]

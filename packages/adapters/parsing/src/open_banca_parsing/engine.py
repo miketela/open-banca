@@ -9,6 +9,7 @@ Security constraints (ADR-0007-amendment):
 
 These guards are irrechazable — no runtime flag disables them.
 """
+
 from __future__ import annotations
 
 # MANDATORY: patch defusedxml BEFORE any openpyxl import
@@ -151,11 +152,13 @@ def _apply_pipeline(
             refs: list[str] = spec.get("refs", [])
             values = [_get_cell_value(row, _resolve_col_index(r, header_map)) for r in refs]
             from open_banca_parsing.dsl.helpers import coalesce as _coalesce
+
             current = _coalesce(*values)
         elif helper == "concat":
             refs_c: list[str] = spec.get("refs", [])
             values_c = [_get_cell_value(row, _resolve_col_index(r, header_map)) for r in refs_c]
             from open_banca_parsing.dsl.helpers import concat as _concat
+
             current = _concat(*values_c, sep=spec.get("sep", " "))
         else:
             current = apply_transform_spec(spec, str(current))
@@ -283,8 +286,7 @@ class ExcelParser:
 
         # Guard 3: sheet data size (approximate — count chars)
         sheet_bytes = sum(
-            sum(len(str(cell)) for cell in row if cell is not None)
-            for row in all_rows
+            sum(len(str(cell)) for cell in row if cell is not None) for row in all_rows
         )
         if sheet_bytes > _MAX_SHEET_BYTES:
             raise ExcelParseError(
@@ -339,7 +341,10 @@ class ExcelParser:
                             "required_column_missing",
                             f"Required column {col_entry.source!r} is empty in row {data_start_idx + row_count + 1}",
                         )
-                    elif col_entry.on_missing.value == "default" and col_entry.default_value is not None:
+                    elif (
+                        col_entry.on_missing.value == "default"
+                        and col_entry.default_value is not None
+                    ):
                         raw_value = col_entry.default_value
                     else:
                         raw_value = ""
@@ -400,6 +405,7 @@ class ExcelParser:
         if isinstance(date_val, str):
             try:
                 from open_banca_parsing.dsl.helpers import parse_date as _pd
+
                 date_val = _pd(date_val, "%Y-%m-%dT%H:%M:%S")
             except Exception:
                 return None
@@ -417,12 +423,18 @@ class ExcelParser:
         if not isinstance(amount_val, Decimal):
             try:
                 from open_banca_parsing.dsl.helpers import normalize_amount as _na
+
                 amount_val = _na(str(amount_val))
             except Exception:
                 return None
 
         # Compute fingerprint hash
-        fingerprint_parts = [account_id, str(date_val.isoformat()), str(amount_val), description_val]
+        fingerprint_parts = [
+            account_id,
+            str(date_val.isoformat()),
+            str(amount_val),
+            description_val,
+        ]
         fingerprint_hash = hashlib.sha256("|".join(fingerprint_parts).encode()).hexdigest()
 
         # Compute ID

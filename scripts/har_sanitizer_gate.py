@@ -4,6 +4,7 @@
 Blocks committing HAR files that contain unsanitized credentials or canary values.
 Used as a pre-commit local hook (Task 11 / REQ-016).
 """
+
 from __future__ import annotations
 
 import re

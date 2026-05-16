@@ -24,7 +24,6 @@ from pydantic_ai.models import Model
 # ---------------------------------------------------------------------------
 # Cost helpers — delegated to unified router
 # ---------------------------------------------------------------------------
-
 from open_banca_llm.router import compute_cost as _router_compute_cost
 from open_banca_llm.router import get_cost_cap as _router_get_cost_cap
 from open_banca_llm.router import resolve_model as _router_resolve_model
@@ -43,7 +42,9 @@ class CostCapExceeded(Exception):
         self.cap = cap
 
 
-def _compute_cost(input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat") -> Decimal:
+def _compute_cost(
+    input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat"
+) -> Decimal:
     """Compute USD cost via the unified router."""
     return _router_compute_cost(model, input_tokens=input_tokens, output_tokens=output_tokens)
 
@@ -408,9 +409,7 @@ class ValidatorAgent:
         lines.append("Sample transactions (first 10):")
         for txn in transactions[:10]:
             desc = txn.description[:60]
-            lines.append(
-                f"  {txn.date} | {txn.raw_id} | {txn.amount} {txn.currency} | {desc}"
-            )
+            lines.append(f"  {txn.date} | {txn.raw_id} | {txn.amount} {txn.currency} | {desc}")
 
         return "\n".join(lines)
 

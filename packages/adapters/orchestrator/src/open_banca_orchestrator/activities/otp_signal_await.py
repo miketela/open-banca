@@ -59,7 +59,7 @@ class OTPSignalAwaitActivity:
 
 
 @activity.defn(name="OTPSignalAwaitActivity")
-async def otp_signal_await(input: OTPSignalAwaitInput) -> OTPSignalAwaitResult:  # noqa: A002
+async def otp_signal_await(input: OTPSignalAwaitInput) -> OTPSignalAwaitResult:
     """Send Temporal heartbeats while keeping the BrowserSidecar CDP connection alive.
 
     Loop: ping sidecar via Unix socket → report heartbeat to Temporal → sleep

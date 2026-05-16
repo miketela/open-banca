@@ -1,4 +1,5 @@
 """Tests for breakage.py — BreakageEvent construction from step failures."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -115,12 +116,20 @@ def test_breakage_event_screenshot_ref_deterministic(mock_page: MagicMock) -> No
     png = b"\x89PNG\r\n\x1a\nfake_content"
     error = StepTimeout("t")
     e1 = build_breakage_event(
-        job_id="j", step_index=0, step_type="click",
-        error=error, screenshot_png=png, page=mock_page,
+        job_id="j",
+        step_index=0,
+        step_type="click",
+        error=error,
+        screenshot_png=png,
+        page=mock_page,
     )
     e2 = build_breakage_event(
-        job_id="j", step_index=0, step_type="click",
-        error=error, screenshot_png=png, page=mock_page,
+        job_id="j",
+        step_index=0,
+        step_type="click",
+        error=error,
+        screenshot_png=png,
+        page=mock_page,
     )
     assert e1.screenshot_ref == e2.screenshot_ref
 
@@ -129,8 +138,12 @@ def test_breakage_event_dom_excerpt_present(mock_page: MagicMock) -> None:
     mock_page.evaluate.return_value = "<body><input value='secret'></body>"
     error = StepTimeout("t")
     event = build_breakage_event(
-        job_id="j", step_index=0, step_type="navigate",
-        error=error, screenshot_png=b"fake", page=mock_page,
+        job_id="j",
+        step_index=0,
+        step_type="navigate",
+        error=error,
+        screenshot_png=b"fake",
+        page=mock_page,
     )
     # DOM excerpt should NOT contain the raw value= content
     assert "secret" not in event.dom_excerpt

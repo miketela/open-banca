@@ -1,5 +1,6 @@
 """Smoke test: verifies the open_banca_sandbox package is importable
 and that core symbols are exported."""
+
 from __future__ import annotations
 
 

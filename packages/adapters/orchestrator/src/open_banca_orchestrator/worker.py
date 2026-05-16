@@ -75,24 +75,24 @@ logger = logging.getLogger(__name__)
 # ParseExcelActivity is synchronous (openpyxl blocking I/O) and must run in a
 # ThreadPoolExecutor.  All other activities are async.
 _ASYNC_ACTIVITIES = [
-    login,              # LoginActivity
-    otp_signal_await,   # OTPSignalAwaitActivity (long-running, 4 min, heartbeat 15s)
+    login,  # LoginActivity
+    otp_signal_await,  # OTPSignalAwaitActivity (long-running, 4 min, heartbeat 15s)
     human_input_await,  # HumanInputAwaitActivity (long-running, ADR-0021)
-    navigate,           # NavigateActivity
-    download_excel,     # DownloadExcelActivity
-    validate,           # ValidateActivity
-    judge,              # JudgeActivity
-    mapper_agent,       # MapperAgentActivity
-    remapper_agent,     # RemapperAgentActivity
-    emit_webhook,       # EmitWebhookActivity
-    spawn_sandbox,      # SpawnSandboxActivity
-    cleanup_sandbox,    # CleanupSandboxActivity
-    persist_result,     # PersistResultActivity
-    list_accounts,      # ListAccountsActivity
+    navigate,  # NavigateActivity
+    download_excel,  # DownloadExcelActivity
+    validate,  # ValidateActivity
+    judge,  # JudgeActivity
+    mapper_agent,  # MapperAgentActivity
+    remapper_agent,  # RemapperAgentActivity
+    emit_webhook,  # EmitWebhookActivity
+    spawn_sandbox,  # SpawnSandboxActivity
+    cleanup_sandbox,  # CleanupSandboxActivity
+    persist_result,  # PersistResultActivity
+    list_accounts,  # ListAccountsActivity
 ]
 
 _SYNC_ACTIVITIES = [
-    parse_excel,     # ParseExcelActivity — sync, threadpool (openpyxl)
+    parse_excel,  # ParseExcelActivity — sync, threadpool (openpyxl)
 ]
 
 
@@ -107,8 +107,11 @@ def _build_interceptors() -> list[object]:
         return []
 
     try:
+        from temporalio.contrib.opentelemetry import (
+            TracingInterceptor,  # type: ignore[import-untyped]
+        )
+
         from open_banca_observability.tracing import setup_tracer  # type: ignore[import-untyped]
-        from temporalio.contrib.opentelemetry import TracingInterceptor  # type: ignore[import-untyped]
 
         setup_tracer("orchestrator")
         return [TracingInterceptor()]

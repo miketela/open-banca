@@ -1,4 +1,5 @@
 """Tests for OpenAPI 3.1 spec generation."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI
@@ -10,9 +11,7 @@ def test_openapi_version_is_31(app: object) -> None:
     assert isinstance(app, FastAPI)
     spec = app.openapi()
     openapi_version: str = spec.get("openapi", "")
-    assert openapi_version.startswith("3.1"), (
-        f"Expected OpenAPI 3.1.x, got '{openapi_version}'"
-    )
+    assert openapi_version.startswith("3.1"), f"Expected OpenAPI 3.1.x, got '{openapi_version}'"
 
 
 def test_openapi_endpoint_accessible(client: TestClient) -> None:

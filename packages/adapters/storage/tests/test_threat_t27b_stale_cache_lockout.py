@@ -15,9 +15,9 @@ TDD coverage (T27b specific):
 3. Multiple store → invalidate → store cycles work correctly (no residue).
 4. Invalidation of unknown hash is a no-op (safe).
 """
+
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -91,8 +91,9 @@ def test_invalidation_records_audit_with_reason(vault: SecretVault) -> None:
         "ORDER BY at DESC LIMIT 1"
     ).fetchall()
     assert len(rows) >= 1, "Expected audit log entry for security_q_invalidated"
-    action, meta_json = rows[0]
+    _action, meta_json = rows[0]
     import json
+
     meta = json.loads(meta_json)
     assert meta.get("reason") == "assertion_failed"
 
@@ -160,7 +161,7 @@ def test_three_failures_pattern_invalidates(vault: SecretVault) -> None:
     # Simulate 3 consecutive failures triggering invalidation
     for i in range(3):
         # Vault still has the answer during failures
-        answer = vault.fetch_security_answer("cred-3fail", q_hash)
+        assert vault.fetch_security_answer("cred-3fail", q_hash) is not None
         # On 3rd failure, external code invalidates
         if i == 2:
             vault.invalidate_security_answer("cred-3fail", q_hash, reason="t27b_three_strikes")

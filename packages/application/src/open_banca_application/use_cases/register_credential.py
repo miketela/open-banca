@@ -1,4 +1,5 @@
 """RegisterCredential use case — store encrypted bank credentials."""
+
 from __future__ import annotations
 
 import contextlib

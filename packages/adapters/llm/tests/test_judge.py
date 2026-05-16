@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from open_banca_domain.entities.breakage_event import BreakageEvent
 from pydantic_ai.models.test import TestModel
 
+from open_banca_domain.entities.breakage_event import BreakageEvent
 from open_banca_llm.judge.agent import (
     CostCapExceeded,
     JudgeAgent,

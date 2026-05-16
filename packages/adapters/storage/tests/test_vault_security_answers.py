@@ -8,6 +8,7 @@ TDD coverage:
 5. purge_expired — deletes only expired entries.
 6. Upsert — storing same key twice overwrites.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

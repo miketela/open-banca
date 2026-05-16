@@ -8,12 +8,12 @@ TDD coverage:
 3. Workflow get_status returns correct value after human_input signal.
 4. Multiple signals: second human_input_provided overwrites first.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from open_banca_orchestrator.workflows.scrape_job import ScrapeJobWorkflow
-
 
 # ── Unit tests on signal handler (no Temporal environment needed) ──────────────
 

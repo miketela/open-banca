@@ -22,6 +22,7 @@ Environment variables:
     OPEN_BANCA_OTEL_ENABLED   "true" to enable (default: false / no-op)
     OTEL_EXPORTER_OTLP_ENDPOINT  gRPC endpoint (default: http://localhost:4317)
 """
+
 from __future__ import annotations
 
 import os

@@ -9,13 +9,13 @@ TDD coverage per threat-model T27a:
   - answer with embed direction mark U+202E (Cf category) is rejected.
   - answer with valid accented text is accepted.
 """
+
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
 from open_banca_api.schemas.jobs import HumanInputRequest
-
 
 # ── Length cap ────────────────────────────────────────────────────────────────
 
@@ -37,14 +37,14 @@ def test_answer_257_bytes_rejected() -> None:
 def test_answer_256_utf8_bytes_multibyte_chars_accepted() -> None:
     """256 UTF-8 bytes with multibyte chars (64 × 4-byte chars) is at limit."""
     # Each '𝕳' is 4 bytes in UTF-8
-    answer = "\U0001D573" * 64  # 64 × 4 = 256 bytes
+    answer = "\U0001d573" * 64  # 64 × 4 = 256 bytes
     req = HumanInputRequest(field_key="security_q_test", answer=answer)
     assert len(req.answer.encode("utf-8")) == 256
 
 
 def test_answer_257_utf8_bytes_multibyte_rejected() -> None:
     """65 × 4-byte chars = 260 bytes > 256."""
-    answer = "\U0001D573" * 65
+    answer = "\U0001d573" * 65
     with pytest.raises(ValidationError):
         HumanInputRequest(field_key="security_q_test", answer=answer)
 

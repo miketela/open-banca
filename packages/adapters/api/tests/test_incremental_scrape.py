@@ -297,6 +297,7 @@ def test_scrape_full_mode_api(job_store: _NullJobStore, null_dedup: _NullDedupEn
     job = job_store.load_job(data["job_id"])
     assert job is not None
     from open_banca_domain.entities.job import JobMode
+
     assert job.mode == JobMode.FULL
     assert job.since_cursor is None
 
@@ -319,6 +320,7 @@ def test_scrape_incremental_first_time_fallback(
     assert job is not None
     # First run → fallback to full
     from open_banca_domain.entities.job import JobMode
+
     assert job.mode == JobMode.FULL
     assert job.since_cursor is None
 
@@ -340,6 +342,7 @@ def test_scrape_incremental_with_cursor(
     job = job_store.load_job(resp.json()["job_id"])
     assert job is not None
     from open_banca_domain.entities.job import JobMode
+
     assert job.mode == JobMode.INCREMENTAL
     assert job.since_cursor is not None
     # Cursor is 2025-06-15; effective_since = 2025-06-12
@@ -366,13 +369,12 @@ def test_scrape_incremental_explicit_since_override(
     job = job_store.load_job(resp.json()["job_id"])
     assert job is not None
     from open_banca_domain.entities.job import JobMode
+
     assert job.mode == JobMode.INCREMENTAL
     assert job.since_cursor is not None
 
 
-def test_get_jobs_cursor_endpoint(
-    job_store: _NullJobStore, null_dedup: _NullDedupEngine
-) -> None:
+def test_get_jobs_cursor_endpoint(job_store: _NullJobStore, null_dedup: _NullDedupEngine) -> None:
     """GET /jobs/{id}/cursor returns a JobCursorResponse with job_id."""
     # First create a job
     client = _make_client(job_store, null_dedup)
@@ -442,5 +444,6 @@ def test_scrape_default_mode_is_incremental_api(
     # Without accounts list the resolver falls back to full
     job = job_store.load_job(resp.json()["job_id"])
     from open_banca_domain.entities.job import JobMode
+
     # no accounts → no cursor query → full fallback
     assert job.mode == JobMode.FULL

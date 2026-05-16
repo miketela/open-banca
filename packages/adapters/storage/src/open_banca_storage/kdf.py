@@ -18,6 +18,7 @@ ADR-0008 constrains:
 OWASP cheatsheet 2024 minimum: time_cost>=3, memory>=64 MiB.  The project
 spec exceeds the OWASP floor deliberately.
 """
+
 from __future__ import annotations
 
 import ctypes

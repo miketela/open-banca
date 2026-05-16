@@ -29,6 +29,7 @@ For Temporal's built-in propagation via ``TracingInterceptor``, configure the
 interceptor at worker/client creation time rather than using these helpers
 directly — see ``open_banca_orchestrator.worker`` setup.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator

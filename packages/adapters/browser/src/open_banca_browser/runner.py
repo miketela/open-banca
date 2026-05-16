@@ -2,6 +2,7 @@
 
 Zero LLM calls. Pure Playwright sync API.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,7 @@ def _default_job_id_provider() -> str:
 
 
 def _raise_on_unresolved(value_ref: str) -> str:
-    raise RuntimeError(
-        f"No secret_resolver provided; cannot resolve value_ref={value_ref!r}"
-    )
+    raise RuntimeError(f"No secret_resolver provided; cannot resolve value_ref={value_ref!r}")
 
 
 class ScraperRunner:
@@ -57,9 +56,7 @@ class ScraperRunner:
         headless: bool = True,
     ) -> None:
         self._job_id_provider = job_id_provider or _default_job_id_provider
-        self._secret_resolver: Callable[[str], str] = (
-            secret_resolver or _raise_on_unresolved
-        )
+        self._secret_resolver: Callable[[str], str] = secret_resolver or _raise_on_unresolved
         self._headless = headless
 
     def execute_map(self, map: BankMap, credential: Credential) -> ScrapeResult:
@@ -90,13 +87,10 @@ class ScraperRunner:
                 context.close()
                 browser.close()
 
-    def _execute_stub(
-        self, map: BankMap, credential: Credential, job_id: str
-    ) -> ScrapeResult:
+    def _execute_stub(self, map: BankMap, credential: Credential, job_id: str) -> ScrapeResult:
         """Return empty result without launching a browser (CI / unit test mode)."""
         logger.debug(
-            "ScraperRunner stub mode (OPEN_BANCA_PLAYWRIGHT_REAL not set) "
-            "job=%s bank=%s",
+            "ScraperRunner stub mode (OPEN_BANCA_PLAYWRIGHT_REAL not set) job=%s bank=%s",
             job_id,
             map.bank_id,
         )
@@ -124,9 +118,7 @@ class ScraperRunner:
         extracted_rows: list[dict[str, str]] = []
 
         for step_index, step in enumerate(map.steps):
-            logger.debug(
-                "job=%s step=%d action=%s", job_id, step_index, step.action
-            )
+            logger.debug("job=%s step=%d action=%s", job_id, step_index, step.action)
             try:
                 dispatch_step(
                     page,
@@ -159,9 +151,7 @@ class ScraperRunner:
                 # Stop executing further steps after a breakage
                 break
             except Exception as exc:
-                logger.error(
-                    "job=%s step=%d unexpected error: %s", job_id, step_index, exc
-                )
+                logger.error("job=%s step=%d unexpected error: %s", job_id, step_index, exc)
                 png = _safe_screenshot(page)
                 event = build_breakage_event(
                     job_id=job_id,
@@ -192,8 +182,7 @@ class ScraperRunner:
                 "map_version": map.version,
                 "steps_total": len(map.steps),
                 "steps_completed": (
-                    len(map.steps) if not breakage_events
-                    else breakage_events[0].step_index
+                    len(map.steps) if not breakage_events else breakage_events[0].step_index
                 ),
                 "downloads": len(download_store),
                 "extracted_rows": len(extracted_rows),

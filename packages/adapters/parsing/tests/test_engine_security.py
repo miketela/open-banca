@@ -7,6 +7,7 @@ Covers:
 - lookup_table > 100K entries rejection at config level
 - Basic engine fixture round-trip
 """
+
 from __future__ import annotations
 
 import io
@@ -73,7 +74,10 @@ def _make_parser_config(**overrides: Any) -> ParserConfig:
                         "transformations": [{"helper": "trim"}],
                     },
                 ],
-                "id_strategy": {"strategy": "fingerprint", "fingerprint_fields": ["date", "amount", "description"]},
+                "id_strategy": {
+                    "strategy": "fingerprint",
+                    "fingerprint_fields": ["date", "amount", "description"],
+                },
             }
         ],
     }
@@ -156,6 +160,7 @@ class TestEngineXXEProtection:
         # We verify the module-level patch ran by importing engine and checking
         # that defusedxml was already active.
         import open_banca_parsing.engine  # noqa: F401
+
         # If we reach here without ImportError, the patch was applied at import time.
         assert True
 

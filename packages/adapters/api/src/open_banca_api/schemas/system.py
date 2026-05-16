@@ -1,4 +1,5 @@
 """Schemas for system endpoints: /time, /health."""
+
 from __future__ import annotations
 
 from datetime import datetime

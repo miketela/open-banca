@@ -42,6 +42,7 @@ def _make_dispatcher(outbox: WebhookOutboxRepository | None = None) -> WebhookDi
 
 # ── test_retry_exponential ────────────────────────────────────────────────────
 
+
 def test_retry_delays_schedule() -> None:
     """Verify retry schedule matches spec: 15s, 1m, 5m, 30m, 2h, 6h."""
     assert RETRY_DELAYS_SECONDS == [15, 60, 300, 1800, 7200, 21600]
@@ -143,6 +144,7 @@ def test_dlq_replay_pending_record_returns_false() -> None:
 
 # ── test_all_7_events_emitable ────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "event_type",
     [
@@ -187,6 +189,7 @@ def test_all_7_events_can_be_delivered() -> None:
 
 # ── test_payload_canary_redact ─────────────────────────────────────────────────
 
+
 def test_payload_canary_redact_before_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     """Payload containing SECRET_CANARY_VALUE must be redacted before outbox storage."""
     monkeypatch.setenv("SECRET_CANARY_VALUE", "super-secret-canary-xyz")
@@ -212,9 +215,7 @@ def test_payload_canary_redact_nested(monkeypatch: pytest.MonkeyPatch) -> None:
     outbox = WebhookOutboxRepository(":memory:")
     dispatcher = _make_dispatcher(outbox)
 
-    event = _make_event(
-        payload={"nested": {"key": "nested-secret-value"}, "safe": "ok"}
-    )
+    event = _make_event(payload={"nested": {"key": "nested-secret-value"}, "safe": "ok"})
     dispatcher.publish(event)
 
     pending = outbox.get_pending()
@@ -238,6 +239,7 @@ def test_payload_clean_not_modified(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ── integration: delivery with signature verification ─────────────────────────
+
 
 @respx.mock
 def test_deliver_pending_success() -> None:
@@ -272,9 +274,7 @@ def test_deliver_pending_5xx_schedules_retry() -> None:
     # Check the record status directly via the private connection.
     all_records: list[dict[str, object]] = []
     with outbox._lock:
-        rows = outbox._conn.execute(
-            "SELECT id, status, attempts FROM webhook_outbox"
-        ).fetchall()
+        rows = outbox._conn.execute("SELECT id, status, attempts FROM webhook_outbox").fetchall()
         all_records = [dict(r) for r in rows]
 
     assert len(all_records) == 1

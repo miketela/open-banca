@@ -14,6 +14,7 @@ Usage:
     allowed = domains_for_bank("banco_general")
     # -> ["bancogeneral.com", "www.bancogeneral.com"]
 """
+
 from __future__ import annotations
 
 from open_banca_sandbox.exceptions import NetworkPolicyViolation
@@ -58,9 +59,7 @@ def domains_for_bank(bank_id: str, *, include_llm: bool = True) -> list[str]:
     bank_id = bank_id.lower().replace("-", "_")
     if bank_id not in _BANK_DOMAINS:
         known = ", ".join(sorted(_BANK_DOMAINS))
-        raise NetworkPolicyViolation(
-            f"Unknown bank_id {bank_id!r}. Known banks: {known}"
-        )
+        raise NetworkPolicyViolation(f"Unknown bank_id {bank_id!r}. Known banks: {known}")
 
     domains = list(_BANK_DOMAINS[bank_id])
     if include_llm:

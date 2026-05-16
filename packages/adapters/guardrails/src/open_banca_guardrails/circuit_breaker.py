@@ -81,9 +81,7 @@ class CircuitBreaker:
         raw_state, opened_at_str = row
         state = CircuitState(raw_state)
         if state == CircuitState.OPEN and opened_at_str:
-            opened_at = datetime.strptime(opened_at_str, "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=UTC
-            )
+            opened_at = datetime.strptime(opened_at_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
             if self._clock.now() >= opened_at + timedelta(hours=self._cooldown_hours):
                 self._transition(bank, credential_ref, CircuitState.HALF_OPEN)
                 return CircuitState.HALF_OPEN
@@ -207,9 +205,7 @@ class CircuitBreaker:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _transition(
-        self, bank: str, credential_ref: str, new_state: CircuitState
-    ) -> None:
+    def _transition(self, bank: str, credential_ref: str, new_state: CircuitState) -> None:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
@@ -234,9 +230,7 @@ class CircuitBreaker:
         ).fetchone()
         if not row or not row[0]:
             return 0.0
-        opened_at = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(
-            tzinfo=UTC
-        )
+        opened_at = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
         expiry = opened_at + timedelta(hours=self._cooldown_hours)
         remaining = (expiry - self._clock.now()).total_seconds()
         return max(0.0, remaining)

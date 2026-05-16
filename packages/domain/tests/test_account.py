@@ -1,4 +1,5 @@
 """Tests for Account discriminated union — savings, checking, credit_card."""
+
 from __future__ import annotations
 
 from datetime import date

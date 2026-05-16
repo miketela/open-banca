@@ -1,4 +1,5 @@
 """BrowserDriverPort — Playwright browser session abstraction."""
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

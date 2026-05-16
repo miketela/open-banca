@@ -27,6 +27,7 @@ CLI usage::
 
 Returns exit code 0 on success, 1 on failure.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,9 +50,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Semver-like pattern (permissive: major.minor.patch[-prerelease][+build])
 # ---------------------------------------------------------------------------
-_SEMVER_RE = re.compile(
-    r"^\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?(?:\+[a-zA-Z0-9._-]+)?$"
-)
+_SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?(?:\+[a-zA-Z0-9._-]+)?$")
 
 # ---------------------------------------------------------------------------
 # Forbidden DSL token patterns (defense-in-depth; L10)
@@ -192,9 +191,7 @@ class MapLinter:
     # L01 — BankMap schema validation
     # ------------------------------------------------------------------
 
-    def _validate_bank_map(
-        self, raw: dict[str, Any] | None, result: LintResult
-    ) -> BankMap | None:
+    def _validate_bank_map(self, raw: dict[str, Any] | None, result: LintResult) -> BankMap | None:
         if raw is None:
             return None
         try:
@@ -361,9 +358,7 @@ class MapLinter:
         self, parser_spec: ParserSpec, result: LintResult
     ) -> None:
         for sheet in parser_spec.sheets:
-            total_helpers = sum(
-                len(col.transformations) for col in sheet.column_map
-            )
+            total_helpers = sum(len(col.transformations) for col in sheet.column_map)
             if total_helpers >= 10:
                 result.add(
                     "L08",
@@ -381,9 +376,7 @@ class MapLinter:
     # when the compile fails (they test the same property for defence-in-depth).
     # ------------------------------------------------------------------
 
-    def _check_l09_l13_re2_compat(
-        self, parser_spec: ParserSpec, result: LintResult
-    ) -> None:
+    def _check_l09_l13_re2_compat(self, parser_spec: ParserSpec, result: LintResult) -> None:
         for sheet in parser_spec.sheets:
             for col in sheet.column_map:
                 for transform in col.transformations:
@@ -431,9 +424,7 @@ class MapLinter:
     # L14 = per-map individual cap ≤ 1 MB (T15 addition, ADR-0007-amendment)
     # ------------------------------------------------------------------
 
-    def _check_l11_l14_lookup_table_size(
-        self, parser_spec: ParserSpec, result: LintResult
-    ) -> None:
+    def _check_l11_l14_lookup_table_size(self, parser_spec: ParserSpec, result: LintResult) -> None:
         _MAX_BYTES = 1_000_000  # 1 MB
         total_bytes = 0
         for sheet in parser_spec.sheets:
@@ -464,9 +455,7 @@ class MapLinter:
     # L12 — download_file extension / content-type allowlist
     # ------------------------------------------------------------------
 
-    def _check_l12_download_extensions(
-        self, bank_map: BankMap, result: LintResult
-    ) -> None:
+    def _check_l12_download_extensions(self, bank_map: BankMap, result: LintResult) -> None:
         for step in bank_map.steps:
             if step.action != "download_file":
                 continue
@@ -492,7 +481,6 @@ class MapLinter:
                     f"and selector {selector!r} does not reference .xlsx/.xls/.csv "
                     "(L12 extension allowlist — prevent unexpected file formats)",
                 )
-
 
     # ------------------------------------------------------------------
     # L15 — prompt_user step validation (ADR-0021)

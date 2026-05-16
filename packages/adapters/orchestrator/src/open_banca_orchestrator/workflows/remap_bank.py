@@ -24,9 +24,7 @@ class RemapBankInput(BaseModel):
     """Input for RemapBankWorkflow."""
 
     bank_id: str = Field(description="Bank whose map needs repair")
-    breakage_hash: str = Field(
-        description="SHA-256 hash of the BreakageEvent — idempotency key"
-    )
+    breakage_hash: str = Field(description="SHA-256 hash of the BreakageEvent — idempotency key")
     proposal_id: str = Field(description="Remap proposal ID from JudgeActivity")
     current_map: BankMap = Field(description="Existing (broken) map to repair")
     job_id: str = Field(description="Parent ScrapeJobWorkflow job ID")
@@ -50,7 +48,7 @@ class RemapBankWorkflow:
     """
 
     @workflow.run
-    async def run(self, input: RemapBankInput) -> RemapBankResult:  # noqa: A002
+    async def run(self, input: RemapBankInput) -> RemapBankResult:
         """Run the RemapBank workflow.
 
         SKELETON — raises NotImplementedError.
@@ -61,6 +59,4 @@ class RemapBankWorkflow:
         TODO: persist updated map.json (cosign-signed).
         TODO: emit remap_completed webhook event via EmitWebhookActivity.
         """
-        raise NotImplementedError(
-            "RemapBankWorkflow not implemented — SKELETON, wired in task 20"
-        )
+        raise NotImplementedError("RemapBankWorkflow not implemented — SKELETON, wired in task 20")

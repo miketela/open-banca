@@ -20,15 +20,15 @@ from temporalio.worker import Replayer, Worker
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 # Build the beartype-safe runner at import time (before any test runs).
-_BEARTYPE_RESTRICTIONS: SandboxRestrictions = (
-    SandboxRestrictions.default.with_passthrough_modules("beartype")
+_BEARTYPE_RESTRICTIONS: SandboxRestrictions = SandboxRestrictions.default.with_passthrough_modules(
+    "beartype"
 )
 _BEARTYPE_RUNNER: SandboxedWorkflowRunner = SandboxedWorkflowRunner(
     restrictions=_BEARTYPE_RESTRICTIONS
 )
 
 
-def pytest_configure(config: object) -> None:  # noqa: ARG001
+def pytest_configure(config: object) -> None:
     """Patch Worker.__init__ to use beartype-passthrough sandbox runner.
 
     Called before test collection. Ensures all Workers created in this pytest

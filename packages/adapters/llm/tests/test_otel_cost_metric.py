@@ -3,6 +3,7 @@
 Verifies that when a cost_counter is injected, each LLM call emits to the
 llm_cost_usd_total OTel metric (task #27).
 """
+
 from __future__ import annotations
 
 from typing import Any

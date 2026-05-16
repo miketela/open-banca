@@ -17,6 +17,7 @@ The script:
 
 Exit codes: 0 = verified, 1 = failed/unsigned.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,8 +70,9 @@ def verify_bank_map(
     repo = github_repo or f"{org}/open-banca"
 
     if not map_path.exists():
-        return VerifyOutcome(ok=False, cert_subject=None, cert_issuer=None,
-                             detail=f"map.json not found: {map_path}")
+        return VerifyOutcome(
+            ok=False, cert_subject=None, cert_issuer=None, detail=f"map.json not found: {map_path}"
+        )
 
     # Attempt to fetch bundle from GitHub release if not present locally
     if not bundle_path.exists() and release_tag:
@@ -82,8 +84,12 @@ def verify_bank_map(
         )
 
     if not bundle_path or not bundle_path.exists():
-        return VerifyOutcome(ok=False, cert_subject=None, cert_issuer=None,
-                             detail="Bundle file not found and no release tag provided for fetch")
+        return VerifyOutcome(
+            ok=False,
+            cert_subject=None,
+            cert_issuer=None,
+            detail="Bundle file not found and no release tag provided for fetch",
+        )
 
     cert_identity_regexp = _DEFAULT_CERT_IDENTITY_REGEXP.format(org=org)
 
@@ -102,24 +108,33 @@ def verify_bank_map(
     logger.debug("Running: %s", " ".join(cmd))
 
     try:
-        proc = subprocess.run(  # noqa: S603
+        proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=30,
         )
     except FileNotFoundError:
-        return VerifyOutcome(ok=False, cert_subject=None, cert_issuer=None,
-                             detail="cosign binary not found in PATH")
+        return VerifyOutcome(
+            ok=False, cert_subject=None, cert_issuer=None, detail="cosign binary not found in PATH"
+        )
     except subprocess.TimeoutExpired:
-        return VerifyOutcome(ok=False, cert_subject=None, cert_issuer=None,
-                             detail="cosign verify-blob timed out after 30s")
+        return VerifyOutcome(
+            ok=False,
+            cert_subject=None,
+            cert_issuer=None,
+            detail="cosign verify-blob timed out after 30s",
+        )
 
     output = (proc.stdout + proc.stderr).strip()
 
     if proc.returncode != 0:
-        return VerifyOutcome(ok=False, cert_subject=None, cert_issuer=None,
-                             detail=f"cosign verify-blob failed: {output}")
+        return VerifyOutcome(
+            ok=False,
+            cert_subject=None,
+            cert_issuer=None,
+            detail=f"cosign verify-blob failed: {output}",
+        )
 
     # Extract certificate fields from output
     cert_subject = _extract_field(output, "Certificate identity:")
@@ -129,8 +144,9 @@ def verify_bank_map(
     if not cert_subject:
         cert_subject = _extract_from_bundle(bundle_path)
 
-    return VerifyOutcome(ok=True, cert_subject=cert_subject, cert_issuer=cert_issuer,
-                         detail=output or "Verified OK")
+    return VerifyOutcome(
+        ok=True, cert_subject=cert_subject, cert_issuer=cert_issuer, detail=output or "Verified OK"
+    )
 
 
 def _fetch_bundle_from_release(
@@ -142,15 +158,12 @@ def _fetch_bundle_from_release(
     """Attempt to download the bundle for *map_path* from a GitHub release."""
     # Construct the expected asset filename (relative path, slashes → underscores)
     asset_name = f"{map_path.name}.bundle"
-    url = (
-        f"https://github.com/{repo}/releases/download/"
-        f"{release_tag}/{asset_name}"
-    )
+    url = f"https://github.com/{repo}/releases/download/{release_tag}/{asset_name}"
     try:
         logger.info("Fetching bundle from: %s", url)
-        urlretrieve(url, bundle_path)  # noqa: S310
+        urlretrieve(url, bundle_path)
         return bundle_path
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Could not fetch bundle from release: %s", exc)
         return None
 
@@ -159,7 +172,7 @@ def _extract_field(text: str, prefix: str) -> str | None:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith(prefix):
-            return stripped[len(prefix):].strip() or None
+            return stripped[len(prefix) :].strip() or None
     return None
 
 
@@ -176,7 +189,7 @@ def _extract_from_bundle(bundle_path: Path) -> str | None:
         )
         if cert_chain:
             return "<certificate present — run cosign for full subject>"
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return None
 
@@ -219,13 +232,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if outcome.ok:
-        print(f"VERIFIED {args.bank_dir}")  # noqa: T201
+        print(f"VERIFIED {args.bank_dir}")
         if outcome.cert_subject:
-            print(f"  Certificate subject: {outcome.cert_subject}")  # noqa: T201
+            print(f"  Certificate subject: {outcome.cert_subject}")
         if outcome.cert_issuer:
-            print(f"  Certificate issuer:  {outcome.cert_issuer}")  # noqa: T201
+            print(f"  Certificate issuer:  {outcome.cert_issuer}")
     else:
-        print(f"FAILED {args.bank_dir}: {outcome.detail}", file=sys.stderr)  # noqa: T201
+        print(f"FAILED {args.bank_dir}: {outcome.detail}", file=sys.stderr)
 
     return 0 if outcome.ok else 1
 

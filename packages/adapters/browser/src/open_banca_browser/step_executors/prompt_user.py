@@ -13,12 +13,12 @@ Flow:
 HumanInputRequired is a normal pause, not an error. The Temporal layer handles it
 by invoking HumanInputAwaitActivity and emitting webhook ``job.human_input_required``.
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import unicodedata
-from collections.abc import Callable
 from typing import Any, Protocol
 
 from open_banca_browser.errors import HumanInputRequired, SelectorNotFound, StepTimeout
@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 class SecurityAnswerVault(Protocol):
     """Protocol expected from vault object passed to execute_prompt_user."""
 
-    def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None:
-        ...
+    def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None: ...
 
     def store_security_answer(
         self,
@@ -42,8 +41,7 @@ class SecurityAnswerVault(Protocol):
         *,
         field_key: str,
         ttl_days: int | None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 def _normalize_question(text: str) -> str:
@@ -58,14 +56,14 @@ def _normalize_question(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     text = text.lower()
     # Strip Unicode punctuation
-    text = "".join(
-        ch for ch in text if not unicodedata.category(ch).startswith("P")
-    )
+    text = "".join(ch for ch in text if not unicodedata.category(ch).startswith("P"))
     # Collapse whitespace
     return " ".join(text.split())
 
 
-def compute_question_hash(bank_id: str, credential_id: str, field_key: str, question_text: str) -> str:
+def compute_question_hash(
+    bank_id: str, credential_id: str, field_key: str, question_text: str
+) -> str:
     """Compute the SHA-256 cache key for a security question.
 
     Cache key composition (ADR-0021):
@@ -128,7 +126,9 @@ def execute_prompt_user(
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
-            raise StepTimeout(f"prompt_user: timeout reading question_selector {question_selector!r}") from exc
+            raise StepTimeout(
+                f"prompt_user: timeout reading question_selector {question_selector!r}"
+            ) from exc
         raise SelectorNotFound(f"prompt_user: error reading question_selector: {exc}") from exc
 
     # 2. Compute cache key hash

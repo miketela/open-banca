@@ -17,6 +17,7 @@ BODY = '{"event_type":"job.completed","job_id":"test-123"}'
 
 # ── test_hmac_sign_verify ─────────────────────────────────────────────────────
 
+
 def test_hmac_sign_verify_roundtrip() -> None:
     """sign_payload + verify_signature should succeed with valid inputs."""
     nonce = str(uuid.uuid4())
@@ -65,6 +66,7 @@ def test_hmac_tampered_body_rejected() -> None:
 
 # ── test_hmac_nonce_required ──────────────────────────────────────────────────
 
+
 def test_hmac_nonce_required_sign() -> None:
     """sign_payload must raise ValueError when nonce is empty."""
     with pytest.raises(ValueError, match="nonce is required"):
@@ -97,6 +99,7 @@ def test_hmac_nonce_required_verify_empty_nonce() -> None:
 
 
 # ── test_hmac_window_60s ──────────────────────────────────────────────────────
+
 
 def test_hmac_window_60s_fresh_accepted() -> None:
     """Signature within 60s window should be accepted."""
@@ -143,6 +146,7 @@ def test_hmac_window_future_timestamp_beyond_60s_rejected() -> None:
 
 
 # ── test_anti_replay ──────────────────────────────────────────────────────────
+
 
 def test_anti_replay_same_nonce_rejected() -> None:
     """Same (nonce, ts) pair must be rejected the second time."""

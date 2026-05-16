@@ -52,9 +52,7 @@ class TransactionRecord(BaseModel):
 class ParseExcelInput(BaseModel):
     """Input for ParseExcelActivity."""
 
-    excel_path: str = Field(
-        description="Path to the Excel file inside the sandbox container"
-    )
+    excel_path: str = Field(description="Path to the Excel file inside the sandbox container")
     content_hash: str = Field(
         description="SHA-256 hex digest for idempotency — if already parsed, return cached"
     )
@@ -69,9 +67,7 @@ class ParseExcelResult(BaseModel):
         description="Normalized transaction records parsed from the Excel file"
     )
     row_count: int = Field(description="Total rows processed (including headers)")
-    skipped_rows: int = Field(
-        default=0, description="Rows skipped due to parse errors"
-    )
+    skipped_rows: int = Field(default=0, description="Rows skipped due to parse errors")
 
 
 class ParseExcelActivity:
@@ -79,7 +75,7 @@ class ParseExcelActivity:
 
 
 @activity.defn(name="ParseExcelActivity")
-def parse_excel(input: ParseExcelInput) -> ParseExcelResult:  # noqa: A002
+def parse_excel(input: ParseExcelInput) -> ParseExcelResult:
     """Parse the bank Excel file using the DSL parser engine (task 17).
 
     Synchronous function — runs in ThreadPoolExecutor on the worker.

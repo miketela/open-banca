@@ -9,6 +9,7 @@ Security constraints (ADR-0007-amendment):
 - Memory cap: 10 MB uncompressed per sheet (enforced in engine, not per-helper).
 - concat output capped at 64 KB per cell; max 50 refs per invocation.
 """
+
 from __future__ import annotations
 
 import signal
@@ -37,7 +38,9 @@ class _ResourceBudgetExceeded(RuntimeError):
     """Raised when a helper exceeds its CPU or memory cap."""
 
 
-def _run_with_timeout(func: Any, *args: Any, timeout: float = _CPU_CAP_SECONDS, **kwargs: Any) -> Any:
+def _run_with_timeout(
+    func: Any, *args: Any, timeout: float = _CPU_CAP_SECONDS, **kwargs: Any
+) -> Any:
     """Run *func* with a hard CPU wall-clock timeout.
 
     On POSIX with SIGALRM available (Linux), uses SIGALRM for precision.

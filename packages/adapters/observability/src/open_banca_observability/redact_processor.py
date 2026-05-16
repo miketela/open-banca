@@ -23,6 +23,7 @@ Usage::
 The name ``RedactingSpanExporter`` is intentionally exported as
 ``RedactingSpanProcessor`` alias for compatibility with task spec wording.
 """
+
 from __future__ import annotations
 
 import copy
@@ -69,8 +70,7 @@ class RedactingSpanExporter(SpanExporter):
                 scrubbed[key] = self._filter.scrub(value)
             elif isinstance(value, (list, tuple)):
                 scrubbed[key] = type(value)(
-                    self._filter.scrub(v) if isinstance(v, str) else v
-                    for v in value
+                    self._filter.scrub(v) if isinstance(v, str) else v for v in value
                 )
             else:
                 scrubbed[key] = value
