@@ -1,6 +1,6 @@
 # HU08 — USER-TEST 5: Operations + security (task 29)
 
-> Issue: TBD
+> Issue: #14
 > Branch: TBD
 > Estado: draft
 > Depende de: taskmaster:23, taskmaster:24, taskmaster:25, taskmaster:26, taskmaster:27, taskmaster:28

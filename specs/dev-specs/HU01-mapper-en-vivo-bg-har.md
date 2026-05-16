@@ -1,6 +1,6 @@
 # HU01 — Mapper en vivo a Banco General + HAR fixture
 
-> Issue: TBD
+> Issue: #7
 > Branch: TBD
 > Estado: draft
 > Depende de: plan-fase:F0, plan-fase:F1, plan-fase:F2 (suite verde antes de tocar live)

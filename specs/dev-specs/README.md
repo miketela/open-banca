@@ -44,16 +44,15 @@ Checklist explícito de cierre.
 
 | HU | Título | Issue | Estado | Depende de |
 |----|--------|-------|--------|------------|
-| HU01 | Mapper en vivo a Banco General + HAR fixture | TBD | draft | plan-fase:F0-F2 |
-| HU02 | Deploy local docker-compose con `.env` real | TBD | draft | HU01 |
-| HU03 | Smoke E2E real Banco General | TBD | draft | HU02 |
-| HU04 | USER-TEST 1: Foundation review | TBD | draft | taskmaster:7 |
-| HU05 | USER-TEST 2: Scraper runner E2E | TBD | draft | taskmaster:12 |
-| HU06 | USER-TEST 3: Banco General piloto | TBD | draft | HU03 |
-| HU07 | USER-TEST 4: Self-healing flow | TBD | draft | taskmaster:21 |
-| HU08 | USER-TEST 5: Operations + security | TBD | draft | taskmaster:23-28 |
-| HU09 | v1.0.0 release: E2E + stress + docs + tag | TBD | draft | HU04-HU08 |
-| HU10 | USER-TEST 6: v1.0.0 release validation | TBD | draft | HU09 |
+| HU01 | Mapper en vivo a Banco General + HAR fixture | [#7](https://github.com/miketela/open-banca/issues/7) | draft | plan-fase:F0-F2 |
+| HU02 | Deploy local docker-compose con `.env` real | [#8](https://github.com/miketela/open-banca/issues/8) | draft | HU01 |
+| HU03 | Smoke E2E real Banco General | [#9](https://github.com/miketela/open-banca/issues/9) | draft | HU02 |
+| HU04 | USER-TEST 1: Foundation review | [#10](https://github.com/miketela/open-banca/issues/10) | draft | taskmaster:7 |
+| HU05 | USER-TEST 2: Scraper runner E2E | [#11](https://github.com/miketela/open-banca/issues/11) | draft | taskmaster:12 |
+| HU06 | USER-TEST 3: Banco General piloto | [#12](https://github.com/miketela/open-banca/issues/12) | draft | HU03 |
+| HU07 | USER-TEST 4: Self-healing flow | [#13](https://github.com/miketela/open-banca/issues/13) | draft | taskmaster:21 |
+| HU08 | USER-TEST 5: Operations + security | [#14](https://github.com/miketela/open-banca/issues/14) | draft | taskmaster:23-28 |
+| HU09 | v1.0.0 release: E2E + stress + docs + tag | [#15](https://github.com/miketela/open-banca/issues/15) | draft | HU04-HU08 |
+| HU10 | USER-TEST 6: v1.0.0 release validation | [#16](https://github.com/miketela/open-banca/issues/16) | draft | HU09 |
 
-> El campo "Issue" se actualiza después de `gh issue create`.
 > El campo "Branch" se actualiza después de `gh issue develop`.

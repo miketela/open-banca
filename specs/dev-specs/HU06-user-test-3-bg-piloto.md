@@ -1,6 +1,6 @@
 # HU06 — USER-TEST 3: Banco General piloto (task 18)
 
-> Issue: TBD
+> Issue: #12
 > Branch: TBD
 > Estado: draft
 > Depende de: HU03 (smoke E2E real BG completado), taskmaster:16, taskmaster:17

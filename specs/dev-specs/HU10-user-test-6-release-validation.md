@@ -1,6 +1,6 @@
 # HU10 — USER-TEST 6: v1.0.0 release validation (task 35)
 
-> Issue: TBD
+> Issue: #16
 > Branch: TBD
 > Estado: draft
 > Depende de: HU09

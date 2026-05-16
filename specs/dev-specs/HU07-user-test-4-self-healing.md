@@ -1,6 +1,6 @@
 # HU07 — USER-TEST 4: Self-healing flow (task 22)
 
-> Issue: TBD
+> Issue: #13
 > Branch: TBD
 > Estado: draft
 > Depende de: taskmaster:19, taskmaster:20, taskmaster:21

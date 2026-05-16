@@ -1,6 +1,6 @@
 # HU03 — Smoke E2E real Banco General
 
-> Issue: TBD
+> Issue: #9
 > Branch: TBD
 > Estado: draft
 > Depende de: HU01, HU02

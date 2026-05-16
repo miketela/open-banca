@@ -1,6 +1,6 @@
 # HU09 — v1.0.0 release: E2E + stress + docs + tag (task 30)
 
-> Issue: TBD
+> Issue: #15
 > Branch: TBD
 > Estado: draft
 > Depende de: HU04, HU05, HU06, HU07, HU08

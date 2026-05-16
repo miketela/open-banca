@@ -1,6 +1,6 @@
 # HU02 — Deploy local docker-compose con `.env` real
 
-> Issue: TBD
+> Issue: #8
 > Branch: TBD
 > Estado: draft
 > Depende de: HU01

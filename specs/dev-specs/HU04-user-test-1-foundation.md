@@ -1,6 +1,6 @@
 # HU04 — USER-TEST 1: Foundation review (task 8)
 
-> Issue: TBD
+> Issue: #10
 > Branch: TBD
 > Estado: draft
 > Depende de: taskmaster:3, taskmaster:4, taskmaster:5, taskmaster:6, taskmaster:7

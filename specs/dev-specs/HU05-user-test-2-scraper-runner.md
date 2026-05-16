@@ -1,6 +1,6 @@
 # HU05 — USER-TEST 2: Scraper runner E2E (task 13)
 
-> Issue: TBD
+> Issue: #11
 > Branch: TBD
 > Estado: draft
 > Depende de: taskmaster:11, taskmaster:12
