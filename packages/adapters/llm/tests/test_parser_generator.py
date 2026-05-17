@@ -5,7 +5,6 @@ from unittest.mock import patch
 from pydantic_ai.models.test import TestModel
 
 from open_banca_llm.parser_generator.agent import ParserGeneratorAgent
-from open_banca_parsing.parser_config import ParserSpec
 
 # A dummy valid parser spec to return from the TestModel
 DUMMY_PARSER_SPEC = {

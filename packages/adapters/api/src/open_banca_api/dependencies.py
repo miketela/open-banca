@@ -87,8 +87,6 @@ class TemporalOrchestratorAdapter:
         account_filter: list[str] | None,
     ) -> None:
         """Start ScrapeJobWorkflow on Temporal."""
-        from temporalio.contrib.pydantic import pydantic_data_converter
-
         from open_banca_orchestrator.workflows.scrape_job import (
             ScrapeJobInput,
             ScrapeJobWorkflow,
@@ -111,7 +109,6 @@ class TemporalOrchestratorAdapter:
             input_,
             id=job_id,
             task_queue=self._task_queue,
-            data_converter=pydantic_data_converter,
         )
         logger.info("Started ScrapeJobWorkflow: job_id=%s bank=%s", job_id, bank_id)
 

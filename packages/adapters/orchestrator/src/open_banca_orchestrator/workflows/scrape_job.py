@@ -51,11 +51,6 @@ with workflow.unsafe.imports_passed_through():
         OTPSignalAwaitInput,
         otp_signal_await,
     )
-    from open_banca_orchestrator.activities.human_input_await import (
-        HumanInputAwaitInput,
-        HumanInputAwaitResult,
-        human_input_await,
-    )
     from open_banca_orchestrator.activities.parse_excel import (
         ParseExcelInput,
         ParserConfig,

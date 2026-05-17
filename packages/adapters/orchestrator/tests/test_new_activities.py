@@ -11,9 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from open_banca_orchestrator.activities.list_accounts import (
-    AccountInfo,
     ListAccountsInput,
-    ListAccountsResult,
     _extract_accounts,
     list_accounts,
 )

@@ -22,7 +22,9 @@ Connection: type[Any] = getattr(_sqlite, "Connection", Any)  # type: ignore[misc
 
 def _sqlite_connect(db_path: str) -> Any:  # type: ignore[return]
     """Call _sqlite.connect() with type-checker suppression."""
-    return _sqlite.connect(db_path)  # type: ignore[attr-defined]
+    # check_same_thread=False: FastAPI resolves sync Depends in a threadpool
+    # while async endpoints run on the event loop (same ConnectionPool, different threads).
+    return _sqlite.connect(db_path, check_same_thread=False)  # type: ignore[attr-defined]
 
 
 @runtime_checkable

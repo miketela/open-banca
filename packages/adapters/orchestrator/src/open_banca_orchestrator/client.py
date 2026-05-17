@@ -13,6 +13,7 @@ Usage::
 """
 
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from open_banca_orchestrator.config import OrchestratorSettings, get_settings
 
@@ -33,4 +34,5 @@ async def get_client(settings: OrchestratorSettings | None = None) -> Client:
     return await Client.connect(
         cfg.temporal_address,
         namespace=cfg.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )

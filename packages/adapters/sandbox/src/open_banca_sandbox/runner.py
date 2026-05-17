@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PROXY_URL = os.getenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375").replace(
     "tcp://", "http://"
 )
-_DOCKER_API_VERSION = "v1.43"
+_DOCKER_API_VERSION = "v1.44"
 
 # Hard container TTL enforced by cleanup.py; spawn embeds a label so cleanup
 # can identify orphaned containers.

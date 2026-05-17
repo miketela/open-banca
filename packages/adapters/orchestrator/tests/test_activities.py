@@ -22,7 +22,6 @@ from open_banca_orchestrator.activities.download_excel import (
 )
 from open_banca_orchestrator.activities.emit_webhook import (
     EmitWebhookInput,
-    WebhookEvent,
     WebhookEventType,
     emit_webhook,
 )
