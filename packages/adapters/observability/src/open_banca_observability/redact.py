@@ -28,6 +28,7 @@ Patterns scrubbed (all configurable via environment variables):
 ADR-0020: filter acts before OTel/Langfuse persistence; both text payloads
 and JSON-serialised attributes are scrubbed.
 """
+
 from __future__ import annotations
 
 import logging
@@ -158,8 +159,7 @@ class RedactFilter(logging.Filter):
 
         if isinstance(record.args, tuple):
             record.args = tuple(
-                _apply_redact(a, self._patterns) if isinstance(a, str) else a
-                for a in record.args
+                _apply_redact(a, self._patterns) if isinstance(a, str) else a for a in record.args
             )
         elif isinstance(record.args, dict):
             record.args = {

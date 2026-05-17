@@ -1,4 +1,5 @@
 """NotifyBreakage use case — persist breakage event and enqueue job.failed webhook."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

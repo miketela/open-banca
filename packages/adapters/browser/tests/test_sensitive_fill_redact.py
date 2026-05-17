@@ -1,4 +1,5 @@
 """Tests verifying that sensitive fill values are never logged or stored in plain text."""
+
 from __future__ import annotations
 
 import logging
@@ -72,6 +73,7 @@ def test_fill_non_sensitive_skips_marking(mock_page: MagicMock) -> None:
 
 def test_fill_raises_value_not_resolved_on_resolver_error(mock_page: MagicMock) -> None:
     """If resolver raises, ValueNotResolved is raised — not the original exception."""
+
     def bad_resolver(ref: str) -> str:
         raise KeyError(f"no secret for {ref}")
 
@@ -108,6 +110,4 @@ def test_fill_secret_not_in_log_output(
         execute_fill(mock_page, step, secret_resolver=resolver)
 
     for record in caplog.records:
-        assert secret not in record.getMessage(), (
-            f"Secret leaked in log: {record.getMessage()!r}"
-        )
+        assert secret not in record.getMessage(), f"Secret leaked in log: {record.getMessage()!r}"

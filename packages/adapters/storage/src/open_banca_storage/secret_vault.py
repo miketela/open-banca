@@ -46,6 +46,7 @@ The ``credentials`` table schema (from ``001_initial.sql``):
     kdf_meta      TEXT               (JSON: {salt_hex, time_cost, memory_cost, parallelism})
     created_at    TEXT               (UTC ISO-8601)
 """
+
 from __future__ import annotations
 
 import json
@@ -108,7 +109,12 @@ def _make_aad(cred_id: str) -> bytes:
 
 
 def _make_security_q_aad(credential_id: str, question_hash: str) -> bytes:
-    return _AAD_SECURITY_Q_PREFIX + credential_id.encode("utf-8") + b":" + question_hash.encode("utf-8")
+    return (
+        _AAD_SECURITY_Q_PREFIX
+        + credential_id.encode("utf-8")
+        + b":"
+        + question_hash.encode("utf-8")
+    )
 
 
 def _now_utc() -> str:
@@ -152,7 +158,7 @@ class SecretVault:
         credential_ref = str(uuid.uuid4())
 
         # Generate per-row entropy
-        salt = secrets.token_bytes(16)   # 128-bit random salt
+        salt = secrets.token_bytes(16)  # 128-bit random salt
         nonce = secrets.token_bytes(12)  # 96-bit AES-GCM nonce
 
         plaintext_bytes = plaintext.encode("utf-8")
@@ -165,12 +171,14 @@ class SecretVault:
         finally:
             wipe_row_key(row_key)
 
-        kdf_meta = json.dumps({
-            "salt_hex": salt.hex(),
-            "time_cost": 3,
-            "memory_cost": 262_144,
-            "parallelism": 4,
-        })
+        kdf_meta = json.dumps(
+            {
+                "salt_hex": salt.hex(),
+                "time_cost": 3,
+                "memory_cost": 262_144,
+                "parallelism": 4,
+            }
+        )
 
         conn = self._pool.get()
         conn.execute(
@@ -285,7 +293,16 @@ class SecretVault:
         updates: list[tuple[bytes, bytes, str, str]] = []
 
         for row in rows:
-            cred_id, _credential_ref, _bank, _label, ciphertext, nonce, kdf_meta_json, _created_at = row
+            (
+                cred_id,
+                _credential_ref,
+                _bank,
+                _label,
+                ciphertext,
+                nonce,
+                kdf_meta_json,
+                _created_at,
+            ) = row
             kdf_meta: dict[str, Any] = json.loads(kdf_meta_json)
             salt = bytes.fromhex(kdf_meta["salt_hex"])
             aad = _make_aad(cred_id)
@@ -306,12 +323,14 @@ class SecretVault:
             finally:
                 wipe_row_key(new_row_key)
 
-            new_kdf_meta = json.dumps({
-                "salt_hex": new_salt.hex(),
-                "time_cost": 3,
-                "memory_cost": 262_144,
-                "parallelism": 4,
-            })
+            new_kdf_meta = json.dumps(
+                {
+                    "salt_hex": new_salt.hex(),
+                    "time_cost": 3,
+                    "memory_cost": 262_144,
+                    "parallelism": 4,
+                }
+            )
             updates.append((new_ciphertext, new_nonce, new_kdf_meta, cred_id))
 
             # Zeroize decrypted plaintext
@@ -374,8 +393,12 @@ class SecretVault:
 
         Security: answer plaintext NEVER appears in logs or audit entries.
         """
-        effective_ttl = ttl_days if ttl_days is not None else int(
-            os.environ.get("BANCA_HUMAN_INPUT_TTL_DAYS", str(_DEFAULT_SECURITY_ANSWER_TTL_DAYS))
+        effective_ttl = (
+            ttl_days
+            if ttl_days is not None
+            else int(
+                os.environ.get("BANCA_HUMAN_INPUT_TTL_DAYS", str(_DEFAULT_SECURITY_ANSWER_TTL_DAYS))
+            )
         )
 
         salt = secrets.token_bytes(16)
@@ -394,12 +417,14 @@ class SecretVault:
         for i in range(len(answer_ba)):
             answer_ba[i] = 0
 
-        kdf_meta = json.dumps({
-            "salt_hex": salt.hex(),
-            "time_cost": 3,
-            "memory_cost": 262_144,
-            "parallelism": 4,
-        })
+        kdf_meta = json.dumps(
+            {
+                "salt_hex": salt.hex(),
+                "time_cost": 3,
+                "memory_cost": 262_144,
+                "parallelism": 4,
+            }
+        )
         now = datetime.now(UTC)
         expires_at = (now + timedelta(days=effective_ttl)).isoformat()
 
@@ -419,8 +444,16 @@ class SecretVault:
                 expires_at   = excluded.expires_at,
                 last_used_at = NULL
             """,
-            (credential_id, question_hash, field_key, ciphertext, nonce, kdf_meta,
-             now.isoformat(), expires_at),
+            (
+                credential_id,
+                question_hash,
+                field_key,
+                ciphertext,
+                nonce,
+                kdf_meta,
+                now.isoformat(),
+                expires_at,
+            ),
         )
         conn.commit()
 
@@ -428,7 +461,11 @@ class SecretVault:
             "security_q_stored",
             "security_answer",
             f"{credential_id}:{question_hash[:8]}",
-            {"field_key": field_key, "ttl_days": effective_ttl, "question_hash_prefix": question_hash[:8]},
+            {
+                "field_key": field_key,
+                "ttl_days": effective_ttl,
+                "question_hash_prefix": question_hash[:8],
+            },
         )
 
     def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None:
@@ -459,7 +496,11 @@ class SecretVault:
                 "security_q_lookup",
                 "security_answer",
                 f"{credential_id}:{question_hash[:8]}",
-                {"hit_or_miss": "miss", "reason": "not_found", "question_hash_prefix": question_hash[:8]},
+                {
+                    "hit_or_miss": "miss",
+                    "reason": "not_found",
+                    "question_hash_prefix": question_hash[:8],
+                },
             )
             return None
 
@@ -476,7 +517,11 @@ class SecretVault:
                 "security_q_lookup",
                 "security_answer",
                 f"{credential_id}:{question_hash[:8]}",
-                {"hit_or_miss": "miss", "reason": "expired", "question_hash_prefix": question_hash[:8]},
+                {
+                    "hit_or_miss": "miss",
+                    "reason": "expired",
+                    "question_hash_prefix": question_hash[:8],
+                },
             )
             return None
 
@@ -507,11 +552,17 @@ class SecretVault:
             "security_q_lookup",
             "security_answer",
             f"{credential_id}:{question_hash[:8]}",
-            {"hit_or_miss": hit_or_miss, "field_key": field_key, "question_hash_prefix": question_hash[:8]},
+            {
+                "hit_or_miss": hit_or_miss,
+                "field_key": field_key,
+                "question_hash_prefix": question_hash[:8],
+            },
         )
         return plaintext
 
-    def invalidate_security_answer(self, credential_id: str, question_hash: str, reason: str = "manual") -> None:
+    def invalidate_security_answer(
+        self, credential_id: str, question_hash: str, reason: str = "manual"
+    ) -> None:
         """Delete a cached security answer and record a tombstone audit entry.
 
         Args:
@@ -632,10 +683,7 @@ class SecretVault:
         rows = conn.execute(
             "SELECT id, bank, label, created_at FROM credentials ORDER BY created_at"
         ).fetchall()
-        return [
-            CredentialSummary(id=r[0], bank=r[1], label=r[2], created_at=r[3])
-            for r in rows
-        ]
+        return [CredentialSummary(id=r[0], bank=r[1], label=r[2], created_at=r[3]) for r in rows]
 
     def close(self) -> None:
         """Zeroize the master passphrase buffer.

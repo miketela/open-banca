@@ -1,4 +1,5 @@
 """open-banca: Sandbox adapter: Docker per-job execution wrapper (ADR-0009)."""
+
 from __future__ import annotations
 
 from open_banca_sandbox.cleanup import SandboxGarbageCollector

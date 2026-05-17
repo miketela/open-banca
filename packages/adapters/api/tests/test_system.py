@@ -1,4 +1,5 @@
 """Tests for /health and /time system endpoints."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

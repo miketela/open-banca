@@ -90,7 +90,7 @@ class PIIRedactingChatModel:
     @property
     def model_name(self) -> str:
         """Proxy attribute required by browser-use telemetry."""
-        return getattr(self._inner, "model_name", self._inner.model)
+        return str(getattr(self._inner, "model_name", self._inner.model) or "")
 
     @property
     def provider(self) -> str:

@@ -1,4 +1,5 @@
 """extract_table step executor."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,9 +37,7 @@ def execute_extract_table(
         locator = page.locator(table_selector)
         count = locator.count()
         if count == 0:
-            raise SelectorNotFound(
-                f"extract_table: table not found: {table_selector!r}"
-            )
+            raise SelectorNotFound(f"extract_table: table not found: {table_selector!r}")
 
         # Extract headers
         header_locators = locator.locator("thead tr th")
@@ -49,16 +48,13 @@ def execute_extract_table(
             header_count = header_locators.count()
 
         headers: list[str] = [
-            header_locators.nth(i).inner_text(timeout=5_000).strip()
-            for i in range(header_count)
+            header_locators.nth(i).inner_text(timeout=5_000).strip() for i in range(header_count)
         ]
 
         # Validate all required columns are present
         missing = [h for h in column_map if h not in headers]
         if missing:
-            raise SchemaMismatch(
-                f"extract_table: missing columns {missing!r} in {headers!r}"
-            )
+            raise SchemaMismatch(f"extract_table: missing columns {missing!r} in {headers!r}")
 
         # Build column index map
         col_indices = {col_name: headers.index(col_name) for col_name in column_map}

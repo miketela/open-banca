@@ -1,4 +1,5 @@
 """Tests for all 6 application use cases using protocol fakes."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -55,6 +56,7 @@ def _make_credential() -> Credential:
 
 def _make_account() -> SavingsAccount:
     from datetime import date
+
     return SavingsAccount(
         id=str(uuid4()),
         bank_account_id="001-111",
@@ -90,7 +92,9 @@ class FakeOrchestrator:
 
     def start_job(self, bank: str, credential_ref: str, mode: str) -> str:
         job_id = str(uuid4())
-        self.started_jobs.append({"bank": bank, "credential_ref": credential_ref, "mode": mode, "job_id": job_id})
+        self.started_jobs.append(
+            {"bank": bank, "credential_ref": credential_ref, "mode": mode, "job_id": job_id}
+        )
         return job_id
 
     def signal_otp_confirmed(self, job_id: str) -> None:
@@ -217,6 +221,7 @@ class TestStartScrapeJob:
 
     def test_invalid_mode_raises(self) -> None:
         from pydantic import ValidationError as PydanticVE
+
         with pytest.raises((ValueError, PydanticVE)):
             StartScrapeJobInput(bank="bg", credential_ref="ref", mode="invalid_mode")
 

@@ -93,8 +93,7 @@ def _resolve_incremental_cursor(
     if not effective_datetimes:
         # No cursors exist — first-time run, fall back to full
         logger.info(
-            "Incremental mode: no prior cursor found for accounts=%s. "
-            "Falling back to full mode.",
+            "Incremental mode: no prior cursor found for accounts=%s. Falling back to full mode.",
             accounts,
         )
         return "full", None
@@ -231,7 +230,9 @@ async def create_scrape(
 )
 async def get_job_cursor(
     job_id: str,
-    accounts: Annotated[list[str] | None, Query(description="Account IDs to query cursors for")] = None,
+    accounts: Annotated[
+        list[str] | None, Query(description="Account IDs to query cursors for")
+    ] = None,
     job_store: Annotated[object, Depends(get_job_store)] = ...,  # type: ignore[assignment]
     dedup_engine: Annotated[object, Depends(get_dedup_engine)] = ...,  # type: ignore[assignment]
 ) -> JobCursorResponse:

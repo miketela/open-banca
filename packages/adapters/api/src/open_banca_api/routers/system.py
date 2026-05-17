@@ -1,4 +1,5 @@
 """System endpoints: GET /health and GET /time (real implementations — not stubs)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

@@ -91,7 +91,9 @@ def resolve_model(agent: AgentRole) -> str:
     model = _fallback_model(agent, fallback_provider)
     logger.info(
         "resolve_model agent=%s model=%s reason=single_provider_fallback provider=%s",
-        agent, model, fallback_provider,
+        agent,
+        model,
+        fallback_provider,
     )
     return model
 
@@ -152,9 +154,7 @@ def compute_cost(model: str, *, input_tokens: int, output_tokens: int) -> Decima
         )
         return Decimal(str(prompt_cost)) + Decimal(str(completion_cost))
     except Exception:
-        logger.warning(
-            "compute_cost: LiteLLM could not price model=%s — returning $0.00", model
-        )
+        logger.warning("compute_cost: LiteLLM could not price model=%s — returning $0.00", model)
         return Decimal("0")
 
 

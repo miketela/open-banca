@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """Track task start/end times with UTC timestamps."""
-import json, sys, os
-from datetime import datetime, timezone
+
+import json
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 STATE_FILE = Path(".taskmaster/state/time-tracking.json")
+
 
 def load():
     if STATE_FILE.is_file():
         return json.loads(STATE_FILE.read_text())
     return {"tasks": {}}
 
+
 def save(data):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(data, indent=2))
 
+
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
+
 
 if len(sys.argv) < 3:
     print("Usage: track-time.py start|complete <task_id> [subtask_id]")
@@ -38,12 +44,22 @@ elif action == "complete":
     entry["status"] = "done"
     if "started" in entry:
         from datetime import datetime as dt
+
         start = dt.fromisoformat(entry["started"])
         end = dt.fromisoformat(entry["completed"])
         entry["duration_minutes"] = round((end - start).total_seconds() / 60, 1)
     data["tasks"][key] = entry
     save(data)
-    print(json.dumps({"ok": True, "action": "completed", "key": key, "duration": entry.get("duration_minutes")}))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "action": "completed",
+                "key": key,
+                "duration": entry.get("duration_minutes"),
+            }
+        )
+    )
 else:
     print(json.dumps({"ok": False, "error": f"Unknown action: {action}"}))
     sys.exit(1)

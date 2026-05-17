@@ -18,6 +18,7 @@ Usage::
     if not result.ok:
         raise RuntimeError(result.errors)
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,9 +63,7 @@ class _MutableVerifyResult:
     error_detail: str | None = None
 
     def build(self) -> VerifyResult:
-        ok = len(self.lint_errors) == 0 and (
-            self.signed if _require_signed() else True
-        )
+        ok = len(self.lint_errors) == 0 and (self.signed if _require_signed() else True)
         return VerifyResult(
             bank_dir=self.bank_dir,
             ok=ok,

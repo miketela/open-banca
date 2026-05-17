@@ -44,9 +44,7 @@ def test_scrape_invalid_payload_returns_422(
     assert response.status_code == 422
 
 
-def test_scrape_full_payload_accepted(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_scrape_full_payload_accepted(client: TestClient, auth_headers: dict[str, str]) -> None:
     """POST /scrape with full valid payload passes validation."""
     payload = {
         "bank_id": "banco_general",

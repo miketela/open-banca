@@ -36,15 +36,15 @@ class CleanupSandboxActivity:
 
 
 @activity.defn(name="CleanupSandboxActivity")
-async def cleanup_sandbox(input: CleanupSandboxInput) -> CleanupSandboxResult:  # noqa: A002
+async def cleanup_sandbox(input: CleanupSandboxInput) -> CleanupSandboxResult:
     """Destroy the sandbox container. Idempotent — ignores 'not found' errors.
 
     Delegates to ``DockerSandboxRunner.kill()`` via the docker-socket-proxy.
     """
     activity.logger.info("cleanup sandbox: container_id=%s", input.container_id)
 
-    from open_banca_domain.ports.sandbox_port import SandboxToken  # noqa: PLC0415
-    from open_banca_sandbox.runner import DockerSandboxRunner  # noqa: PLC0415
+    from open_banca_domain.ports.sandbox_port import SandboxToken
+    from open_banca_sandbox.runner import DockerSandboxRunner
 
     runner = DockerSandboxRunner()
     token = SandboxToken(
@@ -58,9 +58,7 @@ async def cleanup_sandbox(input: CleanupSandboxInput) -> CleanupSandboxResult:  
     except Exception as exc:
         err_str = str(exc).lower()
         if "not found" in err_str or "no such" in err_str or "404" in err_str:
-            activity.logger.info(
-                "sandbox already removed: container_id=%s", input.container_id
-            )
+            activity.logger.info("sandbox already removed: container_id=%s", input.container_id)
             return CleanupSandboxResult(cleaned=True)
         raise
 

@@ -1,4 +1,5 @@
 """fill step executor — resolves value_ref and fills an input, redacting sensitive data."""
+
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,7 @@ def execute_fill(
     try:
         plaintext = secret_resolver(value_ref)
     except Exception as exc:
-        raise ValueNotResolved(
-            f"fill: could not resolve value_ref={value_ref!r}"
-        ) from exc
+        raise ValueNotResolved(f"fill: could not resolve value_ref={value_ref!r}") from exc
 
     if not plaintext:
         raise ValueNotResolved(f"fill: empty value for value_ref={value_ref!r}")
@@ -50,9 +49,7 @@ def execute_fill(
     # Mark field as sensitive so screenshot redactor blanks it
     if sensitive:
         try:
-            page.locator(selector).evaluate(
-                "el => el.setAttribute('data-sensitive', 'true')"
-            )
+            page.locator(selector).evaluate("el => el.setAttribute('data-sensitive', 'true')")
         except Exception:
             logger.debug("Could not mark field as sensitive; proceeding anyway")
 

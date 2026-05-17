@@ -60,9 +60,7 @@ class LoginInput(BaseModel):
     nonce: str = Field(
         description="Per-attempt nonce for idempotency; workflow generates via workflow.uuid4()"
     )
-    sandbox_container_id: str = Field(
-        description="Container ID returned by sandbox spawn step"
-    )
+    sandbox_container_id: str = Field(description="Container ID returned by sandbox spawn step")
 
 
 class LoginResult(BaseModel):
@@ -84,7 +82,7 @@ class LoginActivity:
 
 
 @activity.defn(name="LoginActivity")
-async def login(input: LoginInput) -> LoginResult:  # noqa: A002
+async def login(input: LoginInput) -> LoginResult:
     """Authenticate to the bank portal.
 
     Sends heartbeats every 10 s while waiting for the login page to respond.

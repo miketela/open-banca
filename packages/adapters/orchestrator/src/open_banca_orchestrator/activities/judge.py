@@ -21,9 +21,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from open_banca_domain.entities.breakage_event import BreakageEvent
 from pydantic import BaseModel, Field
 from temporalio import activity
+
+from open_banca_domain.entities.breakage_event import BreakageEvent
 
 
 class JudgeInput(BaseModel):
@@ -31,9 +32,7 @@ class JudgeInput(BaseModel):
 
     job_id: str = Field(description="Unique job identifier")
     breakage_event: BreakageEvent = Field(description="Breakage event to evaluate")
-    breakage_hash: str = Field(
-        description="SHA-256 hash of the BreakageEvent for idempotency"
-    )
+    breakage_hash: str = Field(description="SHA-256 hash of the BreakageEvent for idempotency")
     dom_excerpt: str | None = Field(
         default=None,
         description="Pre-processed DOM excerpt for context (PII redacted in JudgeAgent)",
@@ -47,9 +46,7 @@ class JudgeResult(BaseModel):
     confidence and risk are telemetry fields.
     """
 
-    route: str = Field(
-        description="Routing decision — v1 always 'human_required'"
-    )
+    route: str = Field(description="Routing decision — v1 always 'human_required'")
     confidence: float = Field(
         default=0.0,
         description="Agent confidence 0-1 (telemetry only in v1)",
@@ -76,13 +73,14 @@ def _get_judge_model(override: Any) -> Any:
     if override is not None:
         return override
     if os.environ.get("OPEN_BANCA_TEST_MODEL") == "1":
-        from pydantic_ai.models.test import TestModel  # noqa: PLC0415
+        from pydantic_ai.models.test import TestModel
+
         return TestModel()
     return None  # JudgeAgent will use its default (deepseek)
 
 
 @activity.defn(name="JudgeActivity")
-async def judge(input: JudgeInput) -> JudgeResult:  # noqa: A002
+async def judge(input: JudgeInput) -> JudgeResult:
     """Evaluate a breakage event and decide the recovery path.
 
     v1 contract (ADR-0013 amendment): always returns route='human_required'.
@@ -90,7 +88,7 @@ async def judge(input: JudgeInput) -> JudgeResult:  # noqa: A002
     for telemetry and future v2 auto-apply enablement.
     Cost cap: $0.02/call.
     """
-    from open_banca_llm.judge.agent import (  # noqa: PLC0415
+    from open_banca_llm.judge.agent import (
         CostCapExceeded,
         JudgeAgent,
     )

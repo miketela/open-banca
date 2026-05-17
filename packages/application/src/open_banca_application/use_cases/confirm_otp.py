@@ -1,4 +1,5 @@
 """ConfirmOTP use case — signals otp_confirmed to the running workflow."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

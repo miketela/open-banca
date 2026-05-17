@@ -48,7 +48,7 @@ class EmitWebhookActivity:
 
 
 @activity.defn(name="EmitWebhookActivity")
-async def emit_webhook(input: EmitWebhookInput) -> EmitWebhookResult:  # noqa: A002
+async def emit_webhook(input: EmitWebhookInput) -> EmitWebhookResult:
     """Enqueue a signed HMAC-SHA256 webhook event in the outbox.
 
     Delegates to WebhookDispatcher.publish() which writes to the SQLite outbox.

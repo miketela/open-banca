@@ -1,4 +1,5 @@
 """Unit tests for open_banca_sandbox.network — bank domain allowlist."""
+
 from __future__ import annotations
 
 import pytest

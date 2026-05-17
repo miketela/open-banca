@@ -75,8 +75,7 @@ class RateLimitTracker:
         cutoff = self._clock.now() - timedelta(hours=window_hours)
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
         row = self._conn.execute(
-            "SELECT COUNT(*) FROM rate_events WHERE bank = ? AND op_type = ? "
-            "AND occurred_at > ?",
+            "SELECT COUNT(*) FROM rate_events WHERE bank = ? AND op_type = ? AND occurred_at > ?",
             (bank, op_type, cutoff_str),
         ).fetchone()
         return int(row[0]) if row else 0
@@ -201,9 +200,7 @@ class RateLimitTracker:
             (bank, op_type, cutoff_str),
         ).fetchone()
         if row and row[0]:
-            return datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=UTC
-            )
+            return datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
         return None
 
     def _retry_after(self, oldest: datetime | None, window_hours: int) -> float:

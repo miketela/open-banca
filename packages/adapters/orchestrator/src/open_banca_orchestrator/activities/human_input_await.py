@@ -21,6 +21,7 @@ IMPLEMENTATION STATUS: skeleton.
 Sidecar IPC (BrowserSidecar ADR-0019) is not yet wired — heartbeat loop raises
 NotImplementedError for the ping itself, but activity structure is complete.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -42,7 +43,9 @@ class HumanInputAwaitInput(BaseModel):
     job_id: str = Field(description="Unique job identifier")
     field_key: str = Field(description="Stable field key for this prompt_user step")
     question_hash: str = Field(description="SHA-256 hex cache key for this question")
-    question_text: str = Field(description="Raw question text extracted from DOM (for webhook payload)")
+    question_text: str = Field(
+        description="Raw question text extracted from DOM (for webhook payload)"
+    )
     selector: str = Field(description="CSS/XPath selector for the answer input field")
     timeout_s: int = Field(default=240, description="Seconds to wait before hard timeout")
     browser_session_token: BrowserSessionToken | None = Field(
@@ -73,7 +76,7 @@ class HumanInputAwaitActivity:
 
 
 @activity.defn(name="HumanInputAwaitActivity")
-async def human_input_await(input: HumanInputAwaitInput) -> HumanInputAwaitResult:  # noqa: A002
+async def human_input_await(input: HumanInputAwaitInput) -> HumanInputAwaitResult:
     """Emit job.human_input_required webhook and heartbeat while waiting for signal.
 
     Loop:
@@ -131,7 +134,7 @@ async def human_input_await(input: HumanInputAwaitInput) -> HumanInputAwaitResul
             )
 
         # Report heartbeat to Temporal
-        activity.heartbeat(sidecar_alive=True, ping_count=heartbeat_count)
+        activity.heartbeat({"sidecar_alive": sidecar_alive, "ping_count": heartbeat_count})
         heartbeat_count += 1
 
         logger.debug(

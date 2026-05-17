@@ -14,27 +14,19 @@ Test matrix:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
+from workflow_activity_mocks import (
+    WORKFLOW_MOCK_ACTIVITIES_FAILED,
+    WORKFLOW_MOCK_ACTIVITIES_HAPPY,
+    WORKFLOW_MOCK_ACTIVITIES_OTP,
+)
 
-from open_banca_orchestrator.activities.download_excel import (
-    DownloadExcelResult,
-)
-from open_banca_orchestrator.activities.emit_webhook import EmitWebhookResult
-from open_banca_orchestrator.activities.login import (
-    BrowserSessionToken,
-    LoginResult,
-    LoginStatus,
-)
-from open_banca_orchestrator.activities.navigate import NavigateResult
-from open_banca_orchestrator.activities.otp_signal_await import OTPSignalAwaitResult
-from open_banca_orchestrator.activities.parse_excel import ParseExcelResult
-from open_banca_orchestrator.activities.validate import ValidateResult, ValidationStatus
 from open_banca_orchestrator.workflows.map_bank import MapBankWorkflow
 from open_banca_orchestrator.workflows.remap_bank import RemapBankWorkflow
 from open_banca_orchestrator.workflows.scrape_job import (
@@ -43,112 +35,6 @@ from open_banca_orchestrator.workflows.scrape_job import (
     ScrapeJobWorkflow,
     ScrapeMode,
 )
-
-# ---------------------------------------------------------------------------
-# Mock activity implementations
-# Each mock uses the exact @activity.defn(name=...) name as the real activity
-# so the workflow's execute_activity calls route to these mocks.
-# ---------------------------------------------------------------------------
-
-_FAKE_SESSION_TOKEN = BrowserSessionToken(
-    container_id="test-container",
-    socket_path="/run/banca/sidecar.sock",
-    sidecar_pid=1234,
-)
-
-_FAKE_NAVIGATE = NavigateResult(current_url="https://bank.test/txns", page_title="Transactions")
-_FAKE_DOWNLOAD = DownloadExcelResult(
-    excel_path="/tmp/test.xlsx",
-    file_size_bytes=1024,
-    content_hash="abc123",
-)
-_FAKE_PARSE = ParseExcelResult(transactions=[], row_count=0)
-_FAKE_VALIDATE = ValidateResult(status=ValidationStatus.ok, validated_count=0)
-_FAKE_EMIT = EmitWebhookResult(enqueued=True, event_id="evt-fake-001", http_status=200)
-_FAKE_OTP_KEEPALIVE = OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=5)
-
-
-@activity.defn(name="LoginActivity")
-async def _mock_login_success(_input):  # type: ignore[no-untyped-def]
-    return LoginResult(status=LoginStatus.success)
-
-
-@activity.defn(name="LoginActivity")
-async def _mock_login_needs_otp(_input):  # type: ignore[no-untyped-def]
-    return LoginResult(
-        status=LoginStatus.needs_otp,
-        browser_session_token=_FAKE_SESSION_TOKEN,
-    )
-
-
-@activity.defn(name="LoginActivity")
-async def _mock_login_failed(_input):  # type: ignore[no-untyped-def]
-    return LoginResult(status=LoginStatus.failed, error_detail="bad creds")
-
-
-@activity.defn(name="NavigateActivity")
-async def _mock_navigate(_input):  # type: ignore[no-untyped-def]
-    return _FAKE_NAVIGATE
-
-
-@activity.defn(name="DownloadExcelActivity")
-async def _mock_download(_input):  # type: ignore[no-untyped-def]
-    return _FAKE_DOWNLOAD
-
-
-@activity.defn(name="ParseExcelActivity")
-def _mock_parse_excel(_input):  # type: ignore[no-untyped-def]  # sync
-    return _FAKE_PARSE
-
-
-@activity.defn(name="ValidateActivity")
-async def _mock_validate(_input):  # type: ignore[no-untyped-def]
-    return _FAKE_VALIDATE
-
-
-@activity.defn(name="EmitWebhookActivity")
-async def _mock_emit(_input):  # type: ignore[no-untyped-def]
-    return _FAKE_EMIT
-
-
-@activity.defn(name="OTPSignalAwaitActivity")
-async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
-    return _FAKE_OTP_KEEPALIVE
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-_ALL_MOCK_ACTIVITIES_HAPPY = [
-    _mock_login_success,
-    _mock_navigate,
-    _mock_download,
-    _mock_parse_excel,
-    _mock_validate,
-    _mock_emit,
-    _mock_otp_keepalive,
-]
-
-_ALL_MOCK_ACTIVITIES_OTP = [
-    _mock_login_needs_otp,
-    _mock_navigate,
-    _mock_download,
-    _mock_parse_excel,
-    _mock_validate,
-    _mock_emit,
-    _mock_otp_keepalive,
-]
-
-_ALL_MOCK_ACTIVITIES_FAILED = [
-    _mock_login_failed,
-    _mock_navigate,
-    _mock_download,
-    _mock_parse_excel,
-    _mock_validate,
-    _mock_emit,
-    _mock_otp_keepalive,
-]
 
 
 @pytest.fixture
@@ -163,7 +49,7 @@ def base_input() -> ScrapeJobInput:
 
 
 @pytest.fixture
-def thread_pool() -> ThreadPoolExecutor:
+def thread_pool() -> Iterator[ThreadPoolExecutor]:
     """Thread pool for synchronous activities (ParseExcelActivity)."""
     with ThreadPoolExecutor(max_workers=2) as pool:
         yield pool
@@ -184,7 +70,7 @@ async def test_happy_path(base_input: ScrapeJobInput, thread_pool: ThreadPoolExe
             env.client,
             task_queue="test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=_ALL_MOCK_ACTIVITIES_HAPPY,
+            activities=WORKFLOW_MOCK_ACTIVITIES_HAPPY,
             activity_executor=thread_pool,
         ):
             result: ScrapeJobResult = await env.client.execute_workflow(
@@ -192,7 +78,6 @@ async def test_happy_path(base_input: ScrapeJobInput, thread_pool: ThreadPoolExe
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -213,7 +98,7 @@ async def test_otp_timeout(base_input: ScrapeJobInput, thread_pool: ThreadPoolEx
             env.client,
             task_queue="test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=_ALL_MOCK_ACTIVITIES_OTP,
+            activities=WORKFLOW_MOCK_ACTIVITIES_OTP,
             activity_executor=thread_pool,
         ):
             result: ScrapeJobResult = await env.client.execute_workflow(
@@ -221,7 +106,6 @@ async def test_otp_timeout(base_input: ScrapeJobInput, thread_pool: ThreadPoolEx
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "otp_timeout"
@@ -238,7 +122,7 @@ async def test_cancel_signal(base_input: ScrapeJobInput, thread_pool: ThreadPool
             env.client,
             task_queue="test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=_ALL_MOCK_ACTIVITIES_OTP,
+            activities=WORKFLOW_MOCK_ACTIVITIES_OTP,
             activity_executor=thread_pool,
         ):
             handle = await env.client.start_workflow(
@@ -265,7 +149,7 @@ async def test_login_failed(base_input: ScrapeJobInput, thread_pool: ThreadPoolE
             env.client,
             task_queue="test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=_ALL_MOCK_ACTIVITIES_FAILED,
+            activities=WORKFLOW_MOCK_ACTIVITIES_FAILED,
             activity_executor=thread_pool,
         ):
             result: ScrapeJobResult = await env.client.execute_workflow(
@@ -273,7 +157,6 @@ async def test_login_failed(base_input: ScrapeJobInput, thread_pool: ThreadPoolE
                 base_input,
                 id=base_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "failed"
@@ -296,7 +179,7 @@ async def test_remap_approved_signal(
             env.client,
             task_queue="test-queue",
             workflows=[ScrapeJobWorkflow, MapBankWorkflow, RemapBankWorkflow],
-            activities=_ALL_MOCK_ACTIVITIES_HAPPY,
+            activities=WORKFLOW_MOCK_ACTIVITIES_HAPPY,
             activity_executor=thread_pool,
         ):
             handle = await env.client.start_workflow(

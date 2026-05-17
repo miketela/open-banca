@@ -1,4 +1,5 @@
 """assert_text step executor."""
+
 from __future__ import annotations
 
 import re

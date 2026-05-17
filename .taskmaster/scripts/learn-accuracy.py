@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Analyze estimation accuracy from time tracking data."""
-import json, sys
+
+import json
+import sys
 from pathlib import Path
 
 STATE_FILE = Path(".taskmaster/state/time-tracking.json")
+
 
 def main():
     if not STATE_FILE.is_file():
@@ -13,22 +16,32 @@ def main():
     data = json.loads(STATE_FILE.read_text())
     tasks = data.get("tasks", {})
 
-    completed = {k: v for k, v in tasks.items() if v.get("status") == "done" and "duration_minutes" in v}
+    completed = {
+        k: v for k, v in tasks.items() if v.get("status") == "done" and "duration_minutes" in v
+    }
 
     if not completed:
-        print(json.dumps({"ok": True, "message": "No completed tasks with timing data", "count": 0}))
+        print(
+            json.dumps({"ok": True, "message": "No completed tasks with timing data", "count": 0})
+        )
         return
 
     durations = [v["duration_minutes"] for v in completed.values()]
     avg_duration = sum(durations) / len(durations)
 
-    print(json.dumps({
-        "ok": True,
-        "tasks_analyzed": len(completed),
-        "average_duration_minutes": round(avg_duration, 1),
-        "total_minutes": round(sum(durations), 1),
-        "tasks": {k: v.get("duration_minutes") for k, v in completed.items()},
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "tasks_analyzed": len(completed),
+                "average_duration_minutes": round(avg_duration, 1),
+                "total_minutes": round(sum(durations), 1),
+                "tasks": {k: v.get("duration_minutes") for k, v in completed.items()},
+            },
+            indent=2,
+        )
+    )
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,5 @@
 """Unit tests for SandboxGarbageCollector."""
+
 from __future__ import annotations
 
 import time
@@ -53,9 +54,9 @@ def test_gc_kills_orphan(runner: DockerSandboxRunner) -> None:
                 json=[_make_container(cid, "orphan-job", age_seconds=10)],
             )
         )
-        delete_route = router.delete(
-            f"/{_DOCKER_API_VERSION}/containers/{cid}"
-        ).mock(return_value=httpx.Response(204))
+        delete_route = router.delete(f"/{_DOCKER_API_VERSION}/containers/{cid}").mock(
+            return_value=httpx.Response(204)
+        )
 
         gc = SandboxGarbageCollector(runner, max_age_seconds=3600)
         killed = gc.collect(active_job_ids={"active-job"})
@@ -74,9 +75,9 @@ def test_gc_kills_expired(runner: DockerSandboxRunner) -> None:
                 json=[_make_container(cid, "active-job", age_seconds=400)],
             )
         )
-        delete_route = router.delete(
-            f"/{_DOCKER_API_VERSION}/containers/{cid}"
-        ).mock(return_value=httpx.Response(204))
+        delete_route = router.delete(f"/{_DOCKER_API_VERSION}/containers/{cid}").mock(
+            return_value=httpx.Response(204)
+        )
 
         gc = SandboxGarbageCollector(runner, max_age_seconds=360)
         killed = gc.collect(active_job_ids={"active-job"})
@@ -95,9 +96,9 @@ def test_gc_spares_active_fresh(runner: DockerSandboxRunner) -> None:
                 json=[_make_container(cid, "active-job", age_seconds=10)],
             )
         )
-        delete_route = router.delete(
-            f"/{_DOCKER_API_VERSION}/containers/{cid}"
-        ).mock(return_value=httpx.Response(204))
+        delete_route = router.delete(f"/{_DOCKER_API_VERSION}/containers/{cid}").mock(
+            return_value=httpx.Response(204)
+        )
 
         gc = SandboxGarbageCollector(runner, max_age_seconds=360)
         killed = gc.collect(active_job_ids={"active-job"})
@@ -116,9 +117,9 @@ def test_gc_filters_non_sandbox_labels(runner: DockerSandboxRunner) -> None:
                 json=[_make_container(cid, "some-job", component="temporal-worker")],
             )
         )
-        delete_route = router.delete(
-            f"/{_DOCKER_API_VERSION}/containers/{cid}"
-        ).mock(return_value=httpx.Response(204))
+        delete_route = router.delete(f"/{_DOCKER_API_VERSION}/containers/{cid}").mock(
+            return_value=httpx.Response(204)
+        )
 
         gc = SandboxGarbageCollector(runner, max_age_seconds=360)
         killed = gc.collect(active_job_ids=set())

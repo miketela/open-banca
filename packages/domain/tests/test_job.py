@@ -1,4 +1,5 @@
 """Tests for Job entity — invariants, status enum, frozen behavior."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -101,5 +102,6 @@ class TestJobEntity:
 
     def test_created_at_must_be_utc_aware(self) -> None:
         from datetime import datetime
+
         utc_job = Job(**_valid_job(created_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)))
         assert utc_job.created_at.tzinfo is not None

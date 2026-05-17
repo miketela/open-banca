@@ -17,6 +17,7 @@ Environment variables:
 ADR-0020: ``RedactingSpanExporter`` wraps the OTLP exporter so that canary
 values and PII patterns are scrubbed from every span before export.
 """
+
 from __future__ import annotations
 
 import os

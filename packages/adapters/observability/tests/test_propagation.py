@@ -3,6 +3,7 @@
 test_propagation_temporal: trace_id propagated through a simulated
 workflow→activity context transfer.
 """
+
 from __future__ import annotations
 
 from opentelemetry.sdk.trace import TracerProvider
@@ -90,16 +91,12 @@ class TestPropagationTemporal:
         carrier: dict[str, str] = {}
         with tracer.start_as_current_span("workflow-span") as workflow_span:
             inject_headers(carrier)
-            workflow_trace_id = format(
-                workflow_span.get_span_context().trace_id, "032x"
-            )
+            workflow_trace_id = format(workflow_span.get_span_context().trace_id, "032x")
 
         # Step 2: "Activity" extracts context and starts its span as a child
         parent_ctx = extract_context(carrier)
         with start_activity_span("activity-span", tracer=tracer, context=parent_ctx) as act_span:
-            activity_trace_id = format(
-                act_span.get_span_context().trace_id, "032x"
-            )
+            activity_trace_id = format(act_span.get_span_context().trace_id, "032x")
 
         # Both spans must share the same trace_id
         assert workflow_trace_id == activity_trace_id
@@ -117,7 +114,10 @@ class TestPropagationTemporal:
 
         parent_ctx = extract_context(carrier)
         with start_activity_span(
-            "activity-span", tracer=tracer, context=parent_ctx, attributes={"bank_id": "banco_general"}
+            "activity-span",
+            tracer=tracer,
+            context=parent_ctx,
+            attributes={"bank_id": "banco_general"},
         ):
             pass
 

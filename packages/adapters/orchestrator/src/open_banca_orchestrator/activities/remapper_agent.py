@@ -299,12 +299,9 @@ def _emit_remap_proposed_webhook(
     _emit_webhook_impl(job_id, proposal, llm_cost_usd)
 
 
-def _default_emit_webhook(
-    job_id: str, proposal: RemapProposal, llm_cost_usd: float
-) -> None:
+def _default_emit_webhook(job_id: str, proposal: RemapProposal, llm_cost_usd: float) -> None:
     logger.info(
-        "job.remap_proposed webhook (no dispatcher configured): "
-        "job_id=%s proposal_id=%s bank=%s",
+        "job.remap_proposed webhook (no dispatcher configured): job_id=%s proposal_id=%s bank=%s",
         job_id,
         proposal.id,
         proposal.bank,

@@ -8,6 +8,7 @@ Design notes:
 - NO Temporal / DB connections at boot (task #31 handles wiring).
 - OTel tracing via FastAPIInstrumentor when OPEN_BANCA_OTEL_ENABLED=true.
 """
+
 from __future__ import annotations
 
 import os
@@ -82,8 +83,7 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         openapi_version="3.1.0",
         description=(
-            "Self-hosted API for automated bank data capture in Panama using AI agents. "
-            "AGPL-3.0."
+            "Self-hosted API for automated bank data capture in Panama using AI agents. AGPL-3.0."
         ),
         lifespan=lifespan,
         docs_url="/docs",

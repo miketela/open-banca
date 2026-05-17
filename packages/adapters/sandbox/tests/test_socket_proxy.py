@@ -206,8 +206,7 @@ class TestAllowedEndpoints:
         # 400/404/409 = proxy permitió pero daemon rechazó por otras razones
         # 403 = proxy bloqueó — es el fallo que queremos detectar
         assert resp.status_code != 403, (
-            f"El proxy bloqueó POST containers/create ({resp.status_code}).  "
-            f"POST=1 no está activo."
+            f"El proxy bloqueó POST containers/create ({resp.status_code}).  POST=1 no está activo."
         )
         assert resp.status_code != 401, "El proxy retornó 401 inesperado."
 
@@ -226,8 +225,7 @@ class TestAllowedEndpoints:
         """GET /images/json — listar imágenes disponibles en el host."""
         resp = proxy_client.get(f"/{API_VERSION}/images/json")
         assert resp.status_code != 403, (
-            f"El proxy bloqueó GET images/json ({resp.status_code}).  "
-            f"IMAGES=1 no está activo."
+            f"El proxy bloqueó GET images/json ({resp.status_code}).  IMAGES=1 no está activo."
         )
         assert resp.status_code != 401, "El proxy retornó 401 inesperado."
 
@@ -235,7 +233,6 @@ class TestAllowedEndpoints:
         """GET /networks — listar redes (necesario para crear red efímera por job)."""
         resp = proxy_client.get(f"/{API_VERSION}/networks")
         assert resp.status_code != 403, (
-            f"El proxy bloqueó GET networks ({resp.status_code}).  "
-            f"NETWORKS=1 no está activo."
+            f"El proxy bloqueó GET networks ({resp.status_code}).  NETWORKS=1 no está activo."
         )
         assert resp.status_code != 401, "El proxy retornó 401 inesperado."

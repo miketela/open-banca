@@ -1,4 +1,5 @@
 """Tests for ScraperRunner — integration-style tests using stub mode (no Chromium)."""
+
 from __future__ import annotations
 
 import pytest

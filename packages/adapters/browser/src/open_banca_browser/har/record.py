@@ -23,6 +23,7 @@ Usage::
         )
         browser.close()
 """
+
 from __future__ import annotations
 
 import json
@@ -120,8 +121,6 @@ def load_har(path: Path) -> dict[str, Any]:
 
     version: str = log.get("version", "")
     if not version.startswith(HAR_VERSION):
-        raise ValueError(
-            f"Unexpected HAR version {version!r} in {path}; expected {HAR_VERSION}.x"
-        )
+        raise ValueError(f"Unexpected HAR version {version!r} in {path}; expected {HAR_VERSION}.x")
 
     return har

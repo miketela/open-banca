@@ -42,8 +42,7 @@ def _sanitize_id(value: str, label: str) -> str:
     """
     if not _SAFE_ID_RE.match(value):
         raise ValueError(
-            f"{label} contains disallowed characters: {value!r}. "
-            "Only [a-zA-Z0-9_-] are permitted."
+            f"{label} contains disallowed characters: {value!r}. Only [a-zA-Z0-9_-] are permitted."
         )
     return value
 

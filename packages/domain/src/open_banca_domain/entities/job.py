@@ -1,4 +1,5 @@
 """Job entity — represents one scrape execution lifecycle."""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,4 +1,5 @@
 """Application configuration via pydantic-settings (env vars, .env file)."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -47,11 +48,7 @@ class Settings(BaseSettings):
         """Return all PII_CANARY_* env values (empty strings excluded)."""
         import os
 
-        return [
-            v
-            for k, v in os.environ.items()
-            if k.upper().startswith("PII_CANARY_") and v
-        ]
+        return [v for k, v in os.environ.items() if k.upper().startswith("PII_CANARY_") and v]
 
 
 @lru_cache

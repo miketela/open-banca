@@ -107,7 +107,9 @@ def main() -> int:
         bank_map = None
 
     if bank_map is not None:
-        print(f"  [ok] BankMap schema valid (bank_id={bank_map.bank_id!r}, version={bank_map.version!r})")
+        print(
+            f"  [ok] BankMap schema valid (bank_id={bank_map.bank_id!r}, version={bank_map.version!r})"
+        )
 
     # ── Check 4: action names ────────────────────────────────────────────────
     if bank_map is not None:
@@ -143,8 +145,7 @@ def main() -> int:
                     )
         fill_steps = [s for s in bank_map.steps if s.action == "fill"]
         fill_errors = sum(
-            1 for s in fill_steps
-            if not s.model_dump(mode="json").get("value_ref", "")
+            1 for s in fill_steps if not s.model_dump(mode="json").get("value_ref", "")
         )
         if fill_steps and fill_errors == 0:
             print(f"  [ok] All {len(fill_steps)} fill step(s) have value_ref")
@@ -155,6 +156,7 @@ def main() -> int:
         # Look for patterns like "value": "some_literal_password"
         # We allow "value_ref" (the correct pattern) but flag bare "value" with sensitive names.
         import re
+
         pattern = rf'"value"\s*:\s*"[^"]*{re.escape(field)}[^"]*"'
         if re.search(pattern, raw_lower):
             warnings.append(
@@ -205,6 +207,7 @@ def main() -> int:
             # OPEN_BANCA_PLAYWRIGHT_REAL must NOT be set for stub mode.
             # If set, we warn but skip the stub test to avoid launching a real browser.
             import os
+
             if os.environ.get("OPEN_BANCA_PLAYWRIGHT_REAL", "").strip() == "1":
                 warnings.append(
                     "OPEN_BANCA_PLAYWRIGHT_REAL=1 is set — skipping ScraperRunner stub test "
@@ -219,9 +222,7 @@ def main() -> int:
                 )
 
         except ImportError as exc:
-            warnings.append(
-                f"open-banca-browser not installed, skipping stub execution: {exc}"
-            )
+            warnings.append(f"open-banca-browser not installed, skipping stub execution: {exc}")
         except Exception as exc:
             errors.append(f"ScraperRunner stub execution failed: {exc}")
 
@@ -237,7 +238,7 @@ def main() -> int:
                 print(f"  WARN: {w}")
         return 1
     else:
-        print(f"PASSED — all checks OK")
+        print("PASSED — all checks OK")
         if warnings:
             print(f"  ({len(warnings)} non-fatal warning(s) above)")
         return 0

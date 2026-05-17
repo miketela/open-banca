@@ -46,9 +46,7 @@ def test_enforcer_raises_scrape_over_cap(enforcer: GuardrailEnforcer) -> None:
         enforcer.check("job-2", "banco_general", OperationType.SCRAPE, Decimal("0.11"))
 
 
-def test_enforcer_remap_rate_limit(
-    enforcer: GuardrailEnforcer, clock: FakeClock
-) -> None:
+def test_enforcer_remap_rate_limit(enforcer: GuardrailEnforcer, clock: FakeClock) -> None:
     """4th remap raises RateLimited through the enforcer."""
     for _ in range(3):
         clock.tick(minutes=5)
@@ -59,9 +57,7 @@ def test_enforcer_remap_rate_limit(
         enforcer.check_and_record_rate("banco_general", "remap")
 
 
-def test_enforcer_circuit_open_login(
-    enforcer: GuardrailEnforcer, clock: FakeClock
-) -> None:
+def test_enforcer_circuit_open_login(enforcer: GuardrailEnforcer, clock: FakeClock) -> None:
     """After 2 login failures, circuit opens and check raises CircuitOpen."""
     enforcer.record(
         "job-4",

@@ -1,4 +1,5 @@
 """Request/response schemas for POST /scrape."""
+
 from __future__ import annotations
 
 from datetime import datetime

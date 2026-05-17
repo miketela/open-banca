@@ -1,4 +1,5 @@
 """SandboxPort — Docker container isolation per job."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,6 +29,4 @@ class SandboxPort(Protocol):
 
     def kill(self, token: SandboxToken) -> None: ...
 
-    def attach_network_policy(
-        self, token: SandboxToken, allowed_domains: list[str]
-    ) -> None: ...
+    def attach_network_policy(self, token: SandboxToken, allowed_domains: list[str]) -> None: ...

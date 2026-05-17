@@ -5,6 +5,7 @@ stripped from span attributes before they reach the export destination.
 
 Marks: canary — these are the CI security gate tests.
 """
+
 from __future__ import annotations
 
 import pytest

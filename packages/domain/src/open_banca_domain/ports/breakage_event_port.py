@@ -1,4 +1,5 @@
 """BreakageEventPort — persist breakage events and enqueue job.failed webhooks."""
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

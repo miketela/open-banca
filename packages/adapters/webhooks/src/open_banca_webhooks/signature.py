@@ -83,8 +83,7 @@ def verify_signature(
 
     if "t" not in parts or "v1" not in parts or "n" not in parts:
         raise ValueError(
-            "Invalid signature header: must contain t=, v1=, n= fields. "
-            "Nonce is required."
+            "Invalid signature header: must contain t=, v1=, n= fields. Nonce is required."
         )
 
     try:
@@ -99,9 +98,7 @@ def verify_signature(
     # Window check (60 seconds)
     age = abs(current_time - ts)
     if age > _WINDOW_SECONDS:
-        raise ValueError(
-            f"Signature timestamp expired: age={age}s > window={_WINDOW_SECONDS}s"
-        )
+        raise ValueError(f"Signature timestamp expired: age={age}s > window={_WINDOW_SECONDS}s")
 
     # Anti-replay: reject duplicate (nonce, ts) pairs
     if seen_nonces is not None:
@@ -113,9 +110,7 @@ def verify_signature(
     # HMAC verification
     body_bytes = body.encode("utf-8") if isinstance(body, str) else body
     signed_message = f"{ts}.".encode() + body_bytes
-    expected_mac = hmac.new(
-        secret.encode("utf-8"), signed_message, hashlib.sha256
-    ).hexdigest()
+    expected_mac = hmac.new(secret.encode("utf-8"), signed_message, hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(expected_mac, parts["v1"]):
         raise ValueError("Signature mismatch: HMAC does not match payload")

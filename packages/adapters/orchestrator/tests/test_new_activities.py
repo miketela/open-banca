@@ -3,39 +3,24 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from open_banca_orchestrator.activities.list_accounts import (
-    AccountInfo,
     ListAccountsInput,
-    ListAccountsResult,
     _extract_accounts,
     list_accounts,
 )
-
-
-def _inject_sandbox_mock() -> tuple[MagicMock, MagicMock]:
-    """Inject a mock open_banca_sandbox module into sys.modules."""
-    sandbox_mod = types.ModuleType("open_banca_sandbox")
-    runner_mod = types.ModuleType("open_banca_sandbox.runner")
-    mock_cls = MagicMock()
-    runner_mod.DockerSandboxRunner = mock_cls  # type: ignore[attr-defined]
-    sandbox_mod.runner = runner_mod  # type: ignore[attr-defined]
-    sys.modules["open_banca_sandbox"] = sandbox_mod
-    sys.modules["open_banca_sandbox.runner"] = runner_mod
-    return mock_cls, sandbox_mod  # type: ignore[return-value]
 
 
 class TestSpawnSandbox:
     """SpawnSandboxActivity tests with mocked Docker runner."""
 
     @pytest.mark.asyncio
-    async def test_spawn_returns_container_id(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_spawn_returns_container_id(self, mock_cls: MagicMock) -> None:
         from open_banca_domain.ports.sandbox_port import SandboxToken
         from open_banca_orchestrator.activities.spawn_sandbox import (
             SpawnSandboxInput,
@@ -49,14 +34,11 @@ class TestSpawnSandbox:
             network_name="banca-job1",
             sidecar_socket_path="/run/banca/sidecar.sock",
         )
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.spawn.return_value = mock_token
         mock_cls.return_value = mock_runner
 
-        result = await spawn_sandbox(
-            SpawnSandboxInput(job_id="job-1", bank_id="banco_general")
-        )
+        result = await spawn_sandbox(SpawnSandboxInput(job_id="job-1", bank_id="banco_general"))
 
         assert isinstance(result, SpawnSandboxResult)
         assert result.container_id == "abc123"
@@ -68,41 +50,37 @@ class TestCleanupSandbox:
     """CleanupSandboxActivity tests with mocked Docker runner."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_success(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_cleanup_success(self, mock_cls: MagicMock) -> None:
         from open_banca_orchestrator.activities.cleanup_sandbox import (
             CleanupSandboxInput,
             CleanupSandboxResult,
             cleanup_sandbox,
         )
 
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.kill.return_value = None
         mock_cls.return_value = mock_runner
 
-        result = await cleanup_sandbox(
-            CleanupSandboxInput(container_id="abc123")
-        )
+        result = await cleanup_sandbox(CleanupSandboxInput(container_id="abc123"))
 
         assert isinstance(result, CleanupSandboxResult)
         assert result.cleaned is True
 
     @pytest.mark.asyncio
-    async def test_cleanup_idempotent_not_found(self) -> None:
+    @patch("open_banca_sandbox.runner.DockerSandboxRunner")
+    async def test_cleanup_idempotent_not_found(self, mock_cls: MagicMock) -> None:
         """Cleanup should succeed even if container is already gone."""
         from open_banca_orchestrator.activities.cleanup_sandbox import (
             CleanupSandboxInput,
             cleanup_sandbox,
         )
 
-        mock_cls, _ = _inject_sandbox_mock()
         mock_runner = MagicMock()
         mock_runner.kill.side_effect = Exception("container not found: 404")
         mock_cls.return_value = mock_runner
 
-        result = await cleanup_sandbox(
-            CleanupSandboxInput(container_id="gone123")
-        )
+        result = await cleanup_sandbox(CleanupSandboxInput(container_id="gone123"))
 
         assert result.cleaned is True
 
@@ -138,9 +116,7 @@ class TestListAccounts:
             "open_banca_orchestrator.activities.list_accounts._BANKS_DIR",
             Path("/nonexistent"),
         ):
-            result = await list_accounts(
-                ListAccountsInput(bank_id="banco_general")
-            )
+            result = await list_accounts(ListAccountsInput(bank_id="banco_general"))
         assert len(result.accounts) == 1
         assert result.accounts[0].account_id == "default-account"
 
@@ -160,9 +136,7 @@ class TestListAccounts:
             "open_banca_orchestrator.activities.list_accounts._BANKS_DIR",
             tmp_path,
         ):
-            result = await list_accounts(
-                ListAccountsInput(bank_id="test_bank")
-            )
+            result = await list_accounts(ListAccountsInput(bank_id="test_bank"))
         assert len(result.accounts) == 1
         assert result.accounts[0].account_id == "ACC-100"
 
@@ -173,7 +147,9 @@ class TestWorkerRegistration:
     def test_all_new_activities_in_async_list(self) -> None:
         from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES
 
-        activity_names = [getattr(a, "__temporal_activity_definition").name for a in _ASYNC_ACTIVITIES]
+        activity_names = [
+            getattr(a, "__temporal_activity_definition").name for a in _ASYNC_ACTIVITIES
+        ]
 
         assert "SpawnSandboxActivity" in activity_names
         assert "CleanupSandboxActivity" in activity_names

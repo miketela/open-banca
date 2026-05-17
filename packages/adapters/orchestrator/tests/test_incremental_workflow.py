@@ -9,6 +9,7 @@ Test matrix:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -16,6 +17,12 @@ from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
+from workflow_activity_mocks import (
+    mock_cleanup_sandbox,
+    mock_list_accounts,
+    mock_persist_result,
+    mock_spawn_sandbox,
+)
 
 from open_banca_orchestrator.activities.download_excel import DownloadExcelResult
 from open_banca_orchestrator.activities.emit_webhook import EmitWebhookResult
@@ -84,7 +91,7 @@ async def _mock_validate(_input):  # type: ignore[no-untyped-def]
 
 @activity.defn(name="EmitWebhookActivity")
 async def _mock_emit(_input):  # type: ignore[no-untyped-def]
-    return EmitWebhookResult(enqueued=True, event_id="evt-incr-001", http_status=200)
+    return EmitWebhookResult(enqueued=True, event_id="evt-incr-001")
 
 
 @activity.defn(name="OTPSignalAwaitActivity")
@@ -93,6 +100,10 @@ async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
 
 
 _ALL_MOCK_ACTIVITIES = [
+    mock_spawn_sandbox,
+    mock_cleanup_sandbox,
+    mock_persist_result,
+    mock_list_accounts,
     _mock_login_success,
     _mock_navigate,
     _mock_download_capture,
@@ -104,7 +115,7 @@ _ALL_MOCK_ACTIVITIES = [
 
 
 @pytest.fixture
-def thread_pool() -> ThreadPoolExecutor:
+def thread_pool() -> Iterator[ThreadPoolExecutor]:
     with ThreadPoolExecutor(max_workers=2) as pool:
         yield pool
 
@@ -143,7 +154,6 @@ async def test_workflow_incremental_completes(thread_pool: ThreadPoolExecutor) -
                 incremental_input,
                 id=incremental_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -178,7 +188,6 @@ async def test_workflow_full_historical_completes(thread_pool: ThreadPoolExecuto
                 full_input,
                 id=full_input.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     assert result.status == "completed"
@@ -217,7 +226,6 @@ async def test_workflow_incremental_no_cursor_uses_180d_lookback(
                 incremental_no_cursor,
                 id=incremental_no_cursor.job_id,
                 task_queue="test-queue",
-                result_type=ScrapeJobResult,
             )
 
     # Should complete without error (6-month fallback is handled gracefully)

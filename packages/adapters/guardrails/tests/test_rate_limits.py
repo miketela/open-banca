@@ -23,18 +23,14 @@ from .conftest import FakeClock
 # ------------------------------------------------------------------ #
 
 
-def test_remap_24h_limit_first_three_succeed(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_remap_24h_limit_first_three_succeed(rate: RateLimitTracker, clock: FakeClock) -> None:
     """First 3 remaps in 24h succeed."""
     for _ in range(3):
         clock.tick(minutes=1)
         rate.record_and_check("banco_general", "remap")  # no raise
 
 
-def test_remap_24h_limit_fourth_raises(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_remap_24h_limit_fourth_raises(rate: RateLimitTracker, clock: FakeClock) -> None:
     """4th remap within 24h window raises RateLimited."""
     for _ in range(3):
         clock.tick(minutes=1)
@@ -51,9 +47,7 @@ def test_remap_24h_limit_fourth_raises(
     assert err.window_hours == 24
 
 
-def test_remap_24h_limit_after_window_resets(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_remap_24h_limit_after_window_resets(rate: RateLimitTracker, clock: FakeClock) -> None:
     """After sliding window passes, remap is allowed again."""
     for _ in range(3):
         clock.tick(hours=1)
@@ -82,17 +76,13 @@ def test_remap_24h_limit_different_banks_independent(
 # ------------------------------------------------------------------ #
 
 
-def test_mapping_24h_limit_first_succeeds(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_mapping_24h_limit_first_succeeds(rate: RateLimitTracker, clock: FakeClock) -> None:
     """First mapping in 24h succeeds."""
     clock.tick(minutes=1)
     rate.record_and_check("banco_general", "mapping")  # no raise
 
 
-def test_mapping_24h_limit_second_raises(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_mapping_24h_limit_second_raises(rate: RateLimitTracker, clock: FakeClock) -> None:
     """2nd mapping in 24h without override raises RateLimited."""
     clock.tick(minutes=1)
     rate.record_and_check("banco_general", "mapping")
@@ -106,9 +96,7 @@ def test_mapping_24h_limit_second_raises(
     assert err.limit == 1
 
 
-def test_mapping_24h_limit_override_bypasses(
-    mem_db: sqlite3.Connection, clock: FakeClock
-) -> None:
+def test_mapping_24h_limit_override_bypasses(mem_db: sqlite3.Connection, clock: FakeClock) -> None:
     """mapping_limit_override=True allows multiple mappings."""
     tracker = RateLimitTracker(
         conn=mem_db,
@@ -135,9 +123,7 @@ def test_check_does_not_record(rate: RateLimitTracker, clock: FakeClock) -> None
     assert rate.count_recent("banco_general", "remap") == 1
 
 
-def test_rate_limited_error_has_retry_after(
-    rate: RateLimitTracker, clock: FakeClock
-) -> None:
+def test_rate_limited_error_has_retry_after(rate: RateLimitTracker, clock: FakeClock) -> None:
     """RateLimited error carries a positive retry_after_seconds."""
     # Fill up the remap limit
     for _ in range(3):

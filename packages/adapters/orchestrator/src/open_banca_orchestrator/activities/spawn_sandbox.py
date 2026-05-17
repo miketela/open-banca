@@ -38,7 +38,7 @@ class SpawnSandboxActivity:
 
 
 @activity.defn(name="SpawnSandboxActivity")
-async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:  # noqa: A002
+async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:
     """Spawn an isolated Docker sandbox container for the scrape job.
 
     Delegates to ``DockerSandboxRunner.spawn()`` which creates a hardened
@@ -48,18 +48,14 @@ async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:  # noqa
     Raises:
         SandboxSpawnError: If Docker API fails or image pull fails.
     """
-    activity.logger.info(
-        "spawning sandbox: job_id=%s bank_id=%s", input.job_id, input.bank_id
-    )
+    activity.logger.info("spawning sandbox: job_id=%s bank_id=%s", input.job_id, input.bank_id)
 
-    from open_banca_sandbox.runner import DockerSandboxRunner  # noqa: PLC0415
+    from open_banca_sandbox.runner import DockerSandboxRunner
 
     runner = DockerSandboxRunner()
     token = runner.spawn(job_id=input.job_id, bank_id=input.bank_id)
 
-    activity.logger.info(
-        "sandbox spawned: container_id=%s", token.container_id
-    )
+    activity.logger.info("sandbox spawned: container_id=%s", token.container_id)
 
     return SpawnSandboxResult(
         container_id=token.container_id,

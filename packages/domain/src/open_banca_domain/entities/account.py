@@ -1,4 +1,5 @@
 """Account entities with discriminated union per ADR-0012."""
+
 from __future__ import annotations
 
 from datetime import date

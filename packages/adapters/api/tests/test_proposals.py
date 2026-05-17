@@ -485,14 +485,17 @@ class TestAtomicWrite:
 class TestGitApplyNoInjection:
     """Malicious proposal_id or bank → ValueError from _sanitize_id."""
 
-    @pytest.mark.parametrize("malicious_id", [
-        "../../evil",
-        "id; rm -rf /",
-        "$(whoami)",
-        "id\nmalicious",
-        "id`whoami`",
-        "id'OR'1'='1",
-    ])
+    @pytest.mark.parametrize(
+        "malicious_id",
+        [
+            "../../evil",
+            "id; rm -rf /",
+            "$(whoami)",
+            "id\nmalicious",
+            "id`whoami`",
+            "id'OR'1'='1",
+        ],
+    )
     def test_sanitize_id_rejects_shell_special_chars(self, malicious_id: str) -> None:
         """_sanitize_id raises ValueError for any non-[a-zA-Z0-9_-] input."""
         from open_banca_api.services.git_apply import _sanitize_id
@@ -500,9 +503,7 @@ class TestGitApplyNoInjection:
         with pytest.raises(ValueError, match="disallowed characters"):
             _sanitize_id(malicious_id, "proposal_id")
 
-    def test_git_commit_and_tag_rejects_malicious_bank(
-        self, tmp_path: Path
-    ) -> None:
+    def test_git_commit_and_tag_rejects_malicious_bank(self, tmp_path: Path) -> None:
         """git_commit_and_tag raises ValueError for bank with shell chars."""
         from open_banca_api.services.git_apply import git_commit_and_tag
 
@@ -524,7 +525,9 @@ class TestGitApplyNoInjection:
 class TestRejectEndpoint:
     """Tests for POST /maps/{bank}/proposals/{id}/reject."""
 
-    def _make_client_with_proposal(self, proposal: RemapProposal | None) -> tuple[TestClient, MagicMock]:
+    def _make_client_with_proposal(
+        self, proposal: RemapProposal | None
+    ) -> tuple[TestClient, MagicMock]:
         """Return (client, mock_orchestrator)."""
         from open_banca_api.config import get_settings
         from open_banca_api.dependencies import (
@@ -649,9 +652,7 @@ class TestTTLCleanupTask:
         assert fresh_loaded is not None
         assert fresh_loaded.status == RemapStatus.PENDING
 
-    def test_expire_old_returns_empty_when_no_pending_past_ttl(
-        self, _db_conn: Any
-    ) -> None:
+    def test_expire_old_returns_empty_when_no_pending_past_ttl(self, _db_conn: Any) -> None:
         """No expired proposals → empty list returned."""
         from open_banca_storage.repositories.proposal_repo import ProposalRepository
 

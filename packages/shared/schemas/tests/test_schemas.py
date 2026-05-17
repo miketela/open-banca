@@ -50,6 +50,7 @@ def test_make_savings_account_custom_balance():
 def test_account_union_schema_discriminates():
     """AccountUnionSchema correctly parses savings, checking, credit_card."""
     from pydantic import TypeAdapter
+
     adapter = TypeAdapter(AccountUnionSchema)
     raw_savings = {
         "id": str(uuid.uuid4()),

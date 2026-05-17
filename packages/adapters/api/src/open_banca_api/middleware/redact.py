@@ -3,6 +3,7 @@
 Security requirement: REQ-021 / CLAUDE.md §Security Critical Rules #1.
 Canary CI test must verify that these values never leak through the API surface.
 """
+
 from __future__ import annotations
 
 import json

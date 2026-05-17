@@ -5,6 +5,12 @@
   "signature": null,
   "steps": [
     {
+      "step_id": "login_navigate",
+      "action": "navigate",
+      "url": "https://www.bancogeneral.com",
+      "wait_until": "domcontentloaded"
+    },
+    {
       "step_id": "login_wait_form",
       "action": "wait_for_selector",
       "selector": "[id*='user'], [id*='usuario'], input[type='text']:first-of-type",
@@ -38,7 +44,7 @@
     {
       "step_id": "account_savings_navigate",
       "action": "navigate",
-      "url": "https://www.bgeneral.com/personas/banca-en-linea/cuentas/ahorros/",
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/cuentas/ahorros/",
       "wait_until": "networkidle"
     },
     {
@@ -62,7 +68,7 @@
     {
       "step_id": "account_checking_navigate",
       "action": "navigate",
-      "url": "https://www.bgeneral.com/personas/banca-en-linea/cuentas/corriente/",
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/cuentas/corriente/",
       "wait_until": "networkidle"
     },
     {
@@ -86,7 +92,7 @@
     {
       "step_id": "account_credit_card_navigate",
       "action": "navigate",
-      "url": "https://www.bgeneral.com/personas/banca-en-linea/tarjetas/credito/",
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/tarjetas/credito/",
       "wait_until": "networkidle"
     },
     {

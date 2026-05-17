@@ -2,6 +2,7 @@
 
 Security rule: CLAUDE.md §Security Critical Rules #1.
 """
+
 from __future__ import annotations
 
 import os

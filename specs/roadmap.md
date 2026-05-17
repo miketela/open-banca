@@ -82,7 +82,7 @@ Plan activo: [`launch-api-bg-scrape`](../.cursor/plans/launch-api-bg-scrape_695d
 
 - [~] **F0** LLM router unificado (single-provider fallback, cost caps dinámicos via `litellm.cost_per_token`).
 - [~] **F1** Cerrar workflow: `spawn_sandbox` / `cleanup_sandbox` / `persist_result` / `list_accounts` activities + registrar `human_input_await` en worker.
-- [~] **F2** Suite verde: arreglar 24 tests rojos detectados (orchestrator + banco_general).
+- [x] **F2** Suite verde: arreglar 24 tests rojos detectados (orchestrator + banco_general).
 - [ ] **F3** Mapper en vivo a Banco General + capturar HAR fixture (requiere creds operador).
 - [ ] **F4** Deploy local docker-compose con `.env` real.
 - [ ] **F5** Smoke E2E real: `POST /scrape` → confirmar OTP en device físico → validar webhook firmado + resultado canónico + cost < $0.50.

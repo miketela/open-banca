@@ -2,6 +2,7 @@
 
 ADR-0001: Mapper-Runner split. The runner must never call any LLM library.
 """
+
 from __future__ import annotations
 
 import ast
@@ -56,6 +57,5 @@ def test_no_llm_imports() -> None:
                 violations.append(f"{py_file}: imports banned module {imported!r}")
 
     assert not violations, (
-        "LLM library imports found in scraper runner (violates ADR-0001):\n"
-        + "\n".join(violations)
+        "LLM library imports found in scraper runner (violates ADR-0001):\n" + "\n".join(violations)
     )

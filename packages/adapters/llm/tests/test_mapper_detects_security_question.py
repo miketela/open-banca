@@ -8,6 +8,7 @@ TDD coverage:
 5. interactive_prompt with operator accepting stores to vault.
 6. System prompt includes 'prompt_user' in the allowed step types list.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ import pytest
 
 from open_banca_llm.mapper.agent import FakeChatModel, MapperAgent, interactive_prompt
 from open_banca_llm.mapper.prompts import ALLOWED_STEP_TYPES, SYSTEM_PROMPT
-
 
 # ── System prompt coverage ────────────────────────────────────────────────────
 
@@ -51,8 +51,17 @@ async def test_mapper_returns_map_with_prompt_user_step() -> None:
         "version": "1.0.0",
         "schema_version": "1",
         "steps": [
-            {"step_id": "navigate_login", "action": "navigate", "url": "https://banco-test.com/login"},
-            {"step_id": "fill_user", "action": "fill", "selector": "#user", "value_ref": "<USERNAME>"},
+            {
+                "step_id": "navigate_login",
+                "action": "navigate",
+                "url": "https://banco-test.com/login",
+            },
+            {
+                "step_id": "fill_user",
+                "action": "fill",
+                "selector": "#user",
+                "value_ref": "<USERNAME>",
+            },
             {
                 "step_id": "security_question",
                 "action": "prompt_user",
@@ -152,6 +161,7 @@ def test_interactive_prompt_returns_answer_when_accepted() -> None:
 
 def test_interactive_prompt_returns_none_when_skipped() -> None:
     """interactive_prompt returns None when operator enters 'n'."""
+
     def _fake_prompt(msg: str, **kwargs: Any) -> str:
         return "n"  # skip
 

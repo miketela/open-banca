@@ -1,4 +1,5 @@
 """Tests for open_banca_observability.tracing — tracer setup."""
+
 from __future__ import annotations
 
 import pytest

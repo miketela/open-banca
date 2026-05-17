@@ -8,12 +8,11 @@ TDD coverage:
 5. Valid prompt_user step passes L15.
 6. Map with no prompt_user steps passes L15 (no false positives).
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 from open_banca_parsing.community.linter import MapLinter
 

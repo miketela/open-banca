@@ -1,4 +1,5 @@
 """LLMPort — structured LLM completions with token tracking."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

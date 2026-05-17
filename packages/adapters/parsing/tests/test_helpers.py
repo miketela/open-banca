@@ -5,6 +5,7 @@ Includes:
 - Hypothesis property tests for Decimal precision
 - Boundary / error cases for all helpers
 """
+
 from __future__ import annotations
 
 import time

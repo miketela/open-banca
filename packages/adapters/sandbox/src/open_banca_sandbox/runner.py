@@ -16,6 +16,7 @@ Hardening applied at container creation:
 - NetworkMode: custom per-job bridge (internal=True, no default gateway)
 - IPC mode: none
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,12 +36,16 @@ from open_banca_sandbox.network import domains_for_bank
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_DEFAULT_PROXY_URL = os.getenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375").replace(
-    "tcp://", "http://"
-)
+def _resolve_proxy_url(proxy_url: str | None = None) -> str:
+    """Resolve docker-socket-proxy base URL (HTTP, never a unix socket path)."""
+    raw = proxy_url or os.getenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
+    return raw.replace("tcp://", "http://")
+
+
 _DOCKER_API_VERSION = "v1.43"
 
 # Hard container TTL enforced by cleanup.py; spawn embeds a label so cleanup
@@ -48,7 +53,7 @@ _DOCKER_API_VERSION = "v1.43"
 _CONTAINER_TTL_SECONDS = 360  # 6 minutes
 
 # Resource limits (ADR-0009)
-_CPU_QUOTA = 150_000   # 1.5 CPUs in microseconds (100_000 = 1 CPU)
+_CPU_QUOTA = 150_000  # 1.5 CPUs in microseconds (100_000 = 1 CPU)
 _CPU_PERIOD = 100_000  # microseconds
 _MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
 _PIDS_LIMIT = 256
@@ -74,11 +79,11 @@ class DockerSandboxRunner:
 
     def __init__(
         self,
-        proxy_url: str = _DEFAULT_PROXY_URL,
+        proxy_url: str | None = None,
         image: str = _SANDBOX_IMAGE,
         timeout: float = 30.0,
     ) -> None:
-        self._base_url = proxy_url.rstrip("/")
+        self._base_url = _resolve_proxy_url(proxy_url).rstrip("/")
         self._image = image
         self._client = httpx.Client(base_url=self._base_url, timeout=timeout)
 
@@ -106,9 +111,7 @@ class DockerSandboxRunner:
         try:
             self._create_network(network_name)
         except SandboxProxyError as exc:
-            raise SandboxSpawnError(
-                f"Failed to create network {network_name!r}: {exc}"
-            ) from exc
+            raise SandboxSpawnError(f"Failed to create network {network_name!r}: {exc}") from exc
 
         container_id: str
         try:
@@ -160,7 +163,9 @@ class DockerSandboxRunner:
             )
             # 204 = stopped, 304 = already stopped — both acceptable
             if resp.status_code not in (204, 304, 404):
-                raise SandboxProxyError("POST", f"/containers/{cid}/stop", resp.status_code, resp.text)
+                raise SandboxProxyError(
+                    "POST", f"/containers/{cid}/stop", resp.status_code, resp.text
+                )
         except httpx.HTTPError as exc:
             raise SandboxKillError(f"HTTP error stopping container {cid!r}: {exc}") from exc
 
@@ -180,9 +185,7 @@ class DockerSandboxRunner:
         self._cleanup_network_best_effort(token.network_name)
         logger.info("sandbox.kill container_id=%s network=%s", cid, token.network_name)
 
-    def attach_network_policy(
-        self, token: SandboxToken, allowed_domains: list[str]
-    ) -> None:
+    def attach_network_policy(self, token: SandboxToken, allowed_domains: list[str]) -> None:
         """Record the network policy for the container.
 
         In the current implementation the network egress is enforced at the
@@ -227,14 +230,10 @@ class DockerSandboxRunner:
             json=payload,
         )
         if resp.status_code not in (201,):
-            raise SandboxProxyError(
-                "POST", "/networks/create", resp.status_code, resp.text
-            )
+            raise SandboxProxyError("POST", "/networks/create", resp.status_code, resp.text)
         return resp.json()["Id"]
 
-    def _create_container(
-        self, job_id: str, bank_id: str, network_name: str
-    ) -> str:
+    def _create_container(self, job_id: str, bank_id: str, network_name: str) -> str:
         """POST /containers/create with full hardening configuration."""
         allowed_domains = domains_for_bank(bank_id)
 
@@ -257,7 +256,7 @@ class DockerSandboxRunner:
             # ---- security options ----
             "SecurityOpt": [
                 "no-new-privileges:true",
-                "seccomp:unconfined",   # fallback if custom profile absent; ADR says default
+                "seccomp:unconfined",  # fallback if custom profile absent; ADR says default
                 "apparmor:docker-default",
             ],
             # ---- resource limits ----
@@ -313,15 +312,11 @@ class DockerSandboxRunner:
             json=container_config,
         )
         if resp.status_code != 201:
-            raise SandboxProxyError(
-                "POST", "/containers/create", resp.status_code, resp.text
-            )
+            raise SandboxProxyError("POST", "/containers/create", resp.status_code, resp.text)
         return resp.json()["Id"]
 
     def _start_container(self, container_id: str) -> None:
-        resp = self._client.post(
-            f"/{_DOCKER_API_VERSION}/containers/{container_id}/start"
-        )
+        resp = self._client.post(f"/{_DOCKER_API_VERSION}/containers/{container_id}/start")
         # 204 = started, 304 = already running
         if resp.status_code not in (204, 304):
             raise SandboxProxyError(
@@ -329,18 +324,14 @@ class DockerSandboxRunner:
             )
 
     def _inspect_ip(self, container_id: str, network_name: str) -> str:
-        resp = self._client.get(
-            f"/{_DOCKER_API_VERSION}/containers/{container_id}/json"
-        )
+        resp = self._client.get(f"/{_DOCKER_API_VERSION}/containers/{container_id}/json")
         if resp.status_code != 200:
             raise SandboxSpawnError(
                 f"Failed to inspect container {container_id!r}: HTTP {resp.status_code}"
             )
         data = resp.json()
         try:
-            return str(
-                data["NetworkSettings"]["Networks"][network_name]["IPAddress"]
-            )
+            return str(data["NetworkSettings"]["Networks"][network_name]["IPAddress"])
         except (KeyError, TypeError):
             return ""
 
