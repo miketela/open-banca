@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from open_banca_browser.errors import SelectorNotFound, StepTimeout
-from open_banca_browser.step_executors._utils import extra
+from open_banca_browser.step_executors._utils import extra, root_locator
 from open_banca_domain.entities.bank_map import StepSpec
 
 
@@ -22,22 +22,31 @@ def execute_click(page: Any, step: StepSpec) -> None:
     params = extra(step)
     selector: str = params.get("selector", "")
     nth: int | None = params.get("nth", None)
+    force: bool = bool(params.get("force", False))
+    optional: bool = bool(params.get("optional", False))
 
     try:
+        base = root_locator(page, step)
         if nth is not None:
-            locator = page.locator(selector).nth(nth)
+            locator = base.locator(selector).nth(nth)
         else:
-            locator = page.locator(selector)
+            locator = base.locator(selector)
 
         # Check existence first for a cleaner error
         count = locator.count()
         if count == 0:
+            if optional:
+                return
             raise SelectorNotFound(f"click: selector not found: {selector!r}")
 
-        locator.click(timeout=15_000)
+        locator.click(timeout=15_000, force=force)
     except SelectorNotFound:
+        if optional:
+            return
         raise
     except Exception as exc:
+        if optional:
+            return
         msg = str(exc).lower()
         if "timeout" in msg:
             raise StepTimeout(f"click timeout on {selector!r}") from exc

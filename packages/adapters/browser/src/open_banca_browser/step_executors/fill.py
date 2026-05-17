@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from open_banca_browser.errors import SelectorNotFound, StepTimeout, ValueNotResolved
-from open_banca_browser.step_executors._utils import extra
+from open_banca_browser.step_executors._utils import extra, root_locator
 from open_banca_domain.entities.bank_map import StepSpec
 
 logger = logging.getLogger(__name__)
@@ -56,8 +56,13 @@ def execute_fill(
         except Exception:
             logger.debug("Could not mark field as sensitive; proceeding anyway")
 
+    nth: int | None = params.get("nth", None)
     try:
-        locator = page.locator(selector)
+        locator = root_locator(page, step).locator(selector)
+        if nth is not None:
+            locator = locator.nth(nth)
+        elif params.get("frame_selector") or params.get("iframe_selector"):
+            locator = locator.first
         count = locator.count()
         if count == 0:
             raise SelectorNotFound(f"fill: selector not found: {selector!r}")

@@ -188,6 +188,9 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
             human_input_waiter=waiter,
             vault=vault,
             credential_id=credential_id,
+            heartbeat_fn=lambda: activity.heartbeat(
+                {"job_id": inp.job_id, "phase": "execute_map"}
+            ),
         )
 
         scrape = runner.execute_map(bank_map, credential)

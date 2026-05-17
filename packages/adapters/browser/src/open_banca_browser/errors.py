@@ -89,6 +89,8 @@ class HumanInputRequired(Exception):
         question_hash: str,
         selector: str,
         timeout_s: int = 240,
+        *,
+        frame_selector: str = "",
     ) -> None:
         super().__init__(f"Human input required for field_key={field_key!r}")
         self.question_text = question_text
@@ -96,3 +98,4 @@ class HumanInputRequired(Exception):
         self.question_hash = question_hash
         self.selector = selector
         self.timeout_s = timeout_s
+        self.frame_selector = frame_selector

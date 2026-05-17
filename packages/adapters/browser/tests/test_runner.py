@@ -177,7 +177,9 @@ class TestScraperRunnerHumanInputPause:
             "fluffy",
             field_key="security_q_1",
         )
-        mock_fill.assert_called_once_with(page, "#answer", "fluffy")
+        mock_fill.assert_called_once_with(
+            page, "#answer", "fluffy", frame_selector=""
+        )
         assert mock_dispatch.call_count == 2
         assert result.breakage_events == []
         assert result.metadata["steps_completed"] == 2

@@ -85,7 +85,9 @@ class TestClick:
         page = self._make_page()
         step = _step(selector="#submit")
         execute_click(page, step)
-        page.locator.return_value.click.assert_called_once_with(timeout=15_000)
+        page.locator.return_value.click.assert_called_once_with(
+            timeout=15_000, force=False
+        )
 
     def test_selector_not_found(self) -> None:
         page = self._make_page(count=0)

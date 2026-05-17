@@ -66,6 +66,7 @@ class ScraperRunner:
         human_input_waiter: PollingHumanInputWaiter | None = None,
         vault: SecurityAnswerVault | None = None,
         credential_id: str | None = None,
+        heartbeat_fn: Callable[[], None] | None = None,
     ) -> None:
         self._job_id_provider = job_id_provider or _default_job_id_provider
         self._secret_resolver: Callable[[str], str] = (
@@ -75,6 +76,7 @@ class ScraperRunner:
         self._human_input_waiter = human_input_waiter
         self._vault = vault
         self._credential_id = credential_id
+        self._heartbeat_fn = heartbeat_fn
 
     def execute_map(self, map: BankMap, credential: Credential) -> ScrapeResult:
         """Execute all steps in the BankMap sequentially.
@@ -139,6 +141,8 @@ class ScraperRunner:
         cred_id = self._credential_id or credential.id
 
         for step_index, step in enumerate(map.steps):
+            if self._heartbeat_fn is not None:
+                self._heartbeat_fn()
             logger.debug(
                 "job=%s step=%d action=%s", job_id, step_index, step.action
             )
@@ -171,7 +175,12 @@ class ScraperRunner:
                         answer,
                         field_key=exc.field_key,
                     )
-                fill_prompt_user_answer(page, exc.selector, answer)
+                fill_prompt_user_answer(
+                    page,
+                    exc.selector,
+                    answer,
+                    frame_selector=exc.frame_selector,
+                )
             except ScraperError as exc:
                 logger.warning(
                     "job=%s step=%d action=%s FAILED: %s",

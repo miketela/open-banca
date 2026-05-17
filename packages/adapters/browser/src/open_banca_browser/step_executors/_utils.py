@@ -13,3 +13,12 @@ def extra(step: StepSpec) -> dict[str, Any]:
     This helper provides a safe, typed accessor.
     """
     return step.model_extra or {}
+
+
+def root_locator(page: Any, step: StepSpec) -> Any:
+    """Return page or a FrameLocator when ``frame_selector`` is set on the step."""
+    params = extra(step)
+    frame_selector: str = params.get("frame_selector") or params.get("iframe_selector") or ""
+    if frame_selector:
+        return page.frame_locator(frame_selector)
+    return page

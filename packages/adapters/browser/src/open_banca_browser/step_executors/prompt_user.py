@@ -22,7 +22,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from open_banca_browser.errors import HumanInputRequired, SelectorNotFound, StepTimeout
-from open_banca_browser.step_executors._utils import extra
+from open_banca_browser.step_executors._utils import extra, root_locator
 from open_banca_domain.entities.bank_map import StepSpec
 
 logger = logging.getLogger(__name__)
@@ -115,9 +115,11 @@ def execute_prompt_user(
     if not answer_selector:
         raise SelectorNotFound(f"prompt_user step {step.step_id!r}: missing selector")
 
+    root = root_locator(page, step)
+
     # 1. Extract question text from DOM
     try:
-        locator = page.locator(question_selector)
+        locator = root.locator(question_selector)
         if locator.count() == 0:
             raise SelectorNotFound(
                 f"prompt_user: question_selector not found: {question_selector!r}"
@@ -153,7 +155,7 @@ def execute_prompt_user(
             step.step_id,
         )
         try:
-            ans_locator = page.locator(answer_selector)
+            ans_locator = root.locator(answer_selector)
             if ans_locator.count() == 0:
                 raise SelectorNotFound(
                     f"prompt_user: answer selector not found: {answer_selector!r}"
@@ -178,19 +180,32 @@ def execute_prompt_user(
         field_key,
         step.step_id,
     )
+    frame_selector: str = params.get("frame_selector") or params.get("iframe_selector") or ""
     raise HumanInputRequired(
         question_text=question_text,
         field_key=field_key,
         question_hash=question_hash,
         selector=answer_selector,
         timeout_s=timeout_s,
+        frame_selector=frame_selector,
     )
 
 
-def fill_prompt_user_answer(page: Any, selector: str, answer: str) -> None:
+def fill_prompt_user_answer(
+    page: Any,
+    selector: str,
+    answer: str,
+    *,
+    frame_selector: str = "",
+) -> None:
     """Fill the answer input after human input was delivered."""
     try:
-        ans_locator = page.locator(selector)
+        root = (
+            page.frame_locator(frame_selector)
+            if frame_selector
+            else page
+        )
+        ans_locator = root.locator(selector)
         if ans_locator.count() == 0:
             raise SelectorNotFound(f"prompt_user: answer selector not found: {selector!r}")
         ans_locator.fill(answer, timeout=10_000)

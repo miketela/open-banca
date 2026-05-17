@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from open_banca_browser.errors import SelectorNotFound, StepTimeout
-from open_banca_browser.step_executors._utils import extra
+from open_banca_browser.step_executors._utils import extra, root_locator
 from open_banca_domain.entities.bank_map import StepSpec
 
 _VALID_STATES = {"visible", "attached", "hidden", "detached"}
@@ -30,8 +30,18 @@ def execute_wait_for_selector(page: Any, step: StepSpec) -> None:
     if state not in _VALID_STATES:
         state = "visible"
 
+    frame_selector: str = params.get("frame_selector") or params.get("iframe_selector") or ""
+    nth: int | None = params.get("nth", None)
     try:
-        page.wait_for_selector(selector, state=state, timeout=timeout_ms)
+        if frame_selector:
+            loc = root_locator(page, step).locator(selector)
+            if nth is not None:
+                loc = loc.nth(nth)
+            else:
+                loc = loc.first
+            loc.wait_for(state=state, timeout=timeout_ms)
+        else:
+            page.wait_for_selector(selector, state=state, timeout=timeout_ms)
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
