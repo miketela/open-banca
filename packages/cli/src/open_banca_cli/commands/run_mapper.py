@@ -60,14 +60,35 @@ def _find_repo_root() -> Path:
     return here
 
 
+def _har_raw_dir(repo_root: Path, bank: str) -> Path:
+    return (repo_root / f"packages/banks/{bank}/fixtures/har/raw").resolve()
+
+
 def _har_raw_path(repo_root: Path, bank: str, override: Path | None) -> Path:
     if override is not None:
-        return override if override.is_absolute() else repo_root / override
-    return repo_root / f"packages/banks/{bank}/fixtures/har/raw/mapper_run.har"
+        path = override if override.is_absolute() else repo_root / override
+        return path.resolve()
+    return _har_raw_dir(repo_root, bank) / "mapper_run.har"
 
 
 def _har_sanitized_path(repo_root: Path, bank: str) -> Path:
     return repo_root / f"packages/banks/{bank}/fixtures/har/sanitized/mapper_run.har"
+
+
+def _ensure_har_path_under_raw_dir(repo_root: Path, bank: str, har_path: Path) -> None:
+    """Raw HAR must live under fixtures/har/raw/ (gitignored) to avoid accidental commits."""
+    raw_dir = _har_raw_dir(repo_root, bank)
+    resolved = har_path.resolve()
+    try:
+        resolved.relative_to(raw_dir)
+    except ValueError as exc:
+        console.print(
+            "[bold red]Error: --capture-har-path must be inside[/bold red]\n"
+            f"  {raw_dir}\n"
+            f"  Got: {resolved}\n"
+            "  Paths outside fixtures/har/raw/ are not gitignored and may contain live credentials."
+        )
+        raise typer.Exit(code=1) from exc
 
 
 def run_mapper(
@@ -101,10 +122,17 @@ def run_mapper(
         Path | None,
         typer.Option(
             "--capture-har-path",
-            help="Override raw HAR output path (implies capture when set without --capture-har).",
+            help="Override raw HAR filename under fixtures/har/raw/ (implies capture when set).",
             path_type=Path,
         ),
     ] = None,
+    keep_raw_har: Annotated[
+        bool,
+        typer.Option(
+            "--keep-raw",
+            help="After sanitizing, keep the raw HAR on disk (default: delete raw after sanitize).",
+        ),
+    ] = False,
 ) -> None:
     """Run the MapperAgent to produce a BankMap for BANK.
 
@@ -142,6 +170,7 @@ def run_mapper(
     har_sanitized_path: Path | None = None
     if want_har:
         har_raw_path = _har_raw_path(repo_root, bank, capture_har_path)
+        _ensure_har_path_under_raw_dir(repo_root, bank, har_raw_path)
         har_sanitized_path = _har_sanitized_path(repo_root, bank)
 
     if not live_mode:
@@ -203,6 +232,11 @@ def run_mapper(
 
             HARSanitizer().sanitize_file(har_raw_path, har_sanitized_path)
             console.print(f"\n[green]Sanitized HAR written:[/green] {har_sanitized_path}")
+            if not keep_raw_har:
+                har_raw_path.unlink()
+                console.print(
+                    f"[dim]Raw HAR removed (use --keep-raw to retain for debug): {har_raw_path}[/dim]"
+                )
         else:
             console.print(
                 f"[yellow]Warning: raw HAR not found at {har_raw_path} — skip sanitize.[/yellow]"
@@ -336,7 +370,8 @@ def _print_dry_run_plan(
     if har_raw_path is not None:
         steps.append(
             f"10. Record raw HAR to {har_raw_path} (--capture-har), "
-            "then sanitize to fixtures/har/sanitized/mapper_run.har (HARSanitizer)"
+            "sanitize to fixtures/har/sanitized/mapper_run.har (HARSanitizer), "
+            "then delete raw unless --keep-raw"
         )
     for step in steps:
         console.print(f"  {step}")

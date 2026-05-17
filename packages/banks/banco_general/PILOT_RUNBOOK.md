@@ -164,7 +164,7 @@ OPEN_BANCA_LIVE_MAPPER=1 uv run open-banca run-mapper \
   --capture-har
 ```
 
-2. Al terminar con exito, el CLI escribe ademas `packages/banks/banco_general/fixtures/har/sanitized/mapper_run.har` usando `HARSanitizer` (nunca commitees el raw sin revisar).
+2. Al terminar con exito, el CLI escribe `packages/banks/banco_general/fixtures/har/sanitized/mapper_run.har` con `HARSanitizer` y **borra** el raw salvo que uses `--keep-raw`. Solo commitees el sanitizado. `--capture-har-path` debe quedar bajo `fixtures/har/raw/` (gitignored).
 
 3. Si necesitas redactar un HAR manualmente (mismo comportamiento que el modulo sanitize):
 

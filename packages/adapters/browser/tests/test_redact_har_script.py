@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _minimal_har_with_canary(body: str) -> dict:
     return {
@@ -35,6 +37,7 @@ def _minimal_har_with_canary(body: str) -> dict:
     }
 
 
+@pytest.mark.canary()
 def test_redact_har_script_removes_secret_canary(tmp_path: Path) -> None:
     """HAR containing SECRET_CANARY_VALUE is sanitized to REDACTED via scripts/redact_har.py."""
     repo_root = Path(__file__).resolve().parents[4]
