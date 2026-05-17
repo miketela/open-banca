@@ -2196,6 +2196,7 @@ version = "0.1.0"
 source = { editable = "packages/cli" }
 dependencies = [
     { name = "open-banca-application" },
+    { name = "open-banca-browser" },
     { name = "open-banca-domain" },
     { name = "open-banca-storage" },
     { name = "rich" },
@@ -2205,6 +2206,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "open-banca-application", editable = "packages/application" },
+    { name = "open-banca-browser", editable = "packages/adapters/browser" },
     { name = "open-banca-domain", editable = "packages/domain" },
     { name = "open-banca-storage", editable = "packages/adapters/storage" },
     { name = "rich", specifier = ">=13.0" },

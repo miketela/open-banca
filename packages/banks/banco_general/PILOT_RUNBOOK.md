@@ -151,6 +151,31 @@ Tiempo estimado: 2-5 minutos. Cost cap: $0.50. Wallclock cap: 5 min.
 
 Tras este paso, **vuelve a ejecutar el Paso 4** para validar el nuevo map.json real.
 
+### Captura de HAR para fixtures (replay en CI)
+
+Para grabar trafico de red durante el Mapper live y generar un HAR listo para commitear (tras redaccion):
+
+1. Ejecuta el Mapper con captura (ruta raw por defecto: `packages/banks/banco_general/fixtures/har/raw/mapper_run.har`):
+
+```bash
+OPEN_BANCA_LIVE_MAPPER=1 uv run open-banca run-mapper \
+  --bank banco_general \
+  --credential personal \
+  --capture-har
+```
+
+2. Al terminar con exito, el CLI escribe ademas `packages/banks/banco_general/fixtures/har/sanitized/mapper_run.har` usando `HARSanitizer` (nunca commitees el raw sin revisar).
+
+3. Si necesitas redactar un HAR manualmente (mismo comportamiento que el modulo sanitize):
+
+```bash
+uv run python scripts/redact_har.py \
+  packages/banks/banco_general/fixtures/har/raw/mapper_run.har \
+  packages/banks/banco_general/fixtures/har/sanitized/mapper_run.har
+```
+
+Antes de commit: `uv run pytest -m canary` y revisar que no queden secretos en el HAR sanitizado.
+
 ---
 
 ## Paso 6: Ejecutar Scrape Real via API

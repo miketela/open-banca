@@ -17,6 +17,7 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, TypeVar, overload
 
 from browser_use.llm.messages import BaseMessage
@@ -357,6 +358,8 @@ class MapperAgent:
         interactive: If True and vault is provided, prompt operator in CLI for security
                      question answers (ADR-0021 pre-load path). Default False.
         vault: SecretVault instance for pre-loading security answers. Optional.
+        har_output_path: When set (live browser path only), browser-use records
+            network traffic to this HAR path (``record_har_content='embed'``).
     """
 
     def __init__(
@@ -372,6 +375,7 @@ class MapperAgent:
         start_url_map: dict[str, str] | None = None,
         interactive: bool = False,
         vault: Any | None = None,
+        har_output_path: Path | None = None,
     ) -> None:
         self._model_name = model
         self._cost_cap = cost_cap_usd
@@ -383,6 +387,7 @@ class MapperAgent:
         self._start_url_map = start_url_map or {}
         self._interactive = interactive
         self._vault = vault
+        self._har_output_path = har_output_path
 
     def _build_llm(self, tracker: CostTracker) -> CostTrackingChatModel:
         """Build the wrapped LLM chain: ChatLiteLLM → PIIRedact → CostTracking.
@@ -621,7 +626,7 @@ class MapperAgent:
         # flash_mode + use_thinking=False shrink the tool schema below
         # Anthropic's "compiled grammar too large" threshold (req fails otherwise
         # on the strict tool-calling path with the default browser-use schema).
-        agent = Agent(  # type: ignore[call-arg]
+        agent_kwargs: dict[str, Any] = dict(
             task=task,
             llm=llm,  # type: ignore[arg-type]
             sensitive_data=sensitive_data,  # type: ignore[arg-type]
@@ -631,6 +636,16 @@ class MapperAgent:
             flash_mode=True,
             use_thinking=False,
         )
+        if self._har_output_path is not None:
+            self._har_output_path.parent.mkdir(parents=True, exist_ok=True)
+            from browser_use.browser.profile import BrowserProfile  # type: ignore[import-untyped]
+
+            agent_kwargs["browser_profile"] = BrowserProfile(
+                record_har_path=str(self._har_output_path),
+                record_har_content="embed",
+            )
+
+        agent = Agent(**agent_kwargs)  # type: ignore[call-arg]
 
         try:
             history = await agent.run(max_steps=self._max_steps)
@@ -646,7 +661,10 @@ class MapperAgent:
             raise CostExceeded(usage.cost_usd, self._cost_cap)
 
         # Extract final result from agent history
-        return self._extract_map_from_history(history)
+        result = self._extract_map_from_history(history)
+        if self._har_output_path is not None and self._har_output_path.exists():
+            logger.info("HAR recording written to: %s", self._har_output_path)
+        return result
 
     def _extract_map_from_history(self, history: Any) -> str:
         """Extract map JSON from browser-use AgentHistoryList."""
