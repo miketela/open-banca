@@ -76,6 +76,13 @@ def run_mapper(
             help="Print invocation plan without executing (default: auto-detected from env)",
         ),
     ] = False,
+    cost_cap_usd: Annotated[
+        float,
+        typer.Option(
+            "--cost-cap-usd",
+            help="Max LLM spend for this mapper run (USD)",
+        ),
+    ] = _COST_CAP_USD,
 ) -> None:
     """Run the MapperAgent to produce a BankMap for BANK.
 
@@ -127,13 +134,13 @@ def run_mapper(
             f"credential: {credential}\n"
             f"start_url : {bank_url}\n"
             f"output    : {map_output_path}\n"
-            f"cost_cap  : ${_COST_CAP_USD:.2f}\n"
+            f"cost_cap  : ${cost_cap_usd:.2f}\n"
             f"wallclock : {int(_WALLCLOCK_SECONDS)}s",
             title="open-banca run-mapper",
         )
     )
 
-    bank_map_dict = asyncio.run(_run_live(bank, credential, bank_url))
+    bank_map_dict = asyncio.run(_run_live(bank, credential, bank_url, cost_cap_usd=cost_cap_usd))
 
     # Write output
     map_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +155,13 @@ def run_mapper(
     )
 
 
-async def _run_live(bank: str, credential_label: str, bank_url: str) -> dict[str, object]:
+async def _run_live(
+    bank: str,
+    credential_label: str,
+    bank_url: str,
+    *,
+    cost_cap_usd: float = _COST_CAP_USD,
+) -> dict[str, object]:
     """Execute the MapperAgent against the live bank website.
 
     Imports are lazy so that the heavy open-banca-llm dependency tree
@@ -198,7 +211,7 @@ async def _run_live(bank: str, credential_label: str, bank_url: str) -> dict[str
 
         agent = MapperAgent(  # type: ignore[misc]
             start_url_map={bank: bank_url},
-            cost_cap_usd=_COST_CAP_USD,
+            cost_cap_usd=cost_cap_usd,
             wallclock_cap_seconds=_WALLCLOCK_SECONDS,
             interactive=True,
             vault=vault,
