@@ -9,6 +9,7 @@ Start-to-close timeout: 60s.
 from __future__ import annotations
 
 import logging
+import os
 
 from pydantic import BaseModel, Field
 from temporalio import activity
@@ -51,6 +52,12 @@ async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:  # noqa
     activity.logger.info(
         "spawning sandbox: job_id=%s bank_id=%s", input.job_id, input.bank_id
     )
+
+    if os.environ.get("OPEN_BANCA_SKIP_SANDBOX", "").strip() in {"1", "true", "yes"}:
+        activity.logger.warning(
+            "OPEN_BANCA_SKIP_SANDBOX set — skipping Docker spawn (local dev only)"
+        )
+        return SpawnSandboxResult(container_id=f"local-skip-{input.job_id[:12]}")
 
     from open_banca_sandbox.runner import DockerSandboxRunner  # noqa: PLC0415
 

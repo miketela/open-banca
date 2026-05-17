@@ -9,6 +9,7 @@ Start-to-close timeout: 30s.
 from __future__ import annotations
 
 import logging
+import os
 
 from pydantic import BaseModel, Field
 from temporalio import activity
@@ -42,6 +43,13 @@ async def cleanup_sandbox(input: CleanupSandboxInput) -> CleanupSandboxResult:  
     Delegates to ``DockerSandboxRunner.kill()`` via the docker-socket-proxy.
     """
     activity.logger.info("cleanup sandbox: container_id=%s", input.container_id)
+
+    if (
+        os.environ.get("OPEN_BANCA_SKIP_SANDBOX", "").strip() in {"1", "true", "yes"}
+        or input.container_id.startswith("local-skip-")
+    ):
+        activity.logger.info("sandbox cleanup skipped (local dev)")
+        return CleanupSandboxResult(cleaned=True)
 
     from open_banca_domain.ports.sandbox_port import SandboxToken  # noqa: PLC0415
     from open_banca_sandbox.runner import DockerSandboxRunner  # noqa: PLC0415

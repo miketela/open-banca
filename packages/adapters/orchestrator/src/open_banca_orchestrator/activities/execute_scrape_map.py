@@ -68,8 +68,11 @@ def _open_storage():
 
     passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "")
     settings = get_storage_settings()
+    db_path = Path(
+        os.environ.get("OPEN_BANCA_DB_PATH", str(settings.open_banca_db_path))
+    )
     pool = ConnectionPool(
-        db_path=settings.db_path,
+        db_path=db_path,
         passphrase=passphrase,
         key_derivation=Argon2idKeyDerivation(),
     )

@@ -399,62 +399,18 @@ class ScrapeJobWorkflow:
         scrape_result: ExecuteScrapeMapResult,
         sandbox_container_id: str,
     ) -> ScrapeJobResult:
-        from open_banca_domain.entities.breakage_event import (  # noqa: PLC0415
-            BreakageEvent as DomainBreakageEvent,
-        )
-
-        breakage_hash = hashlib.sha256(
-            str(scrape_result.errors).encode()
-        ).hexdigest()
-        breakage_event = DomainBreakageEvent(
-            job_id=job_id,
-            step_index=scrape_result.steps_completed,
-            step_type="scrape_map",
-            error_class=scrape_result.errors[0] if scrape_result.errors else "breakage",
-            screenshot_ref="sha256:none",
-            dom_excerpt=str(scrape_result.errors)[:10240],
-            occurred_at=workflow.now(),
-        )
-
-        judge_result: JudgeResult = await workflow.execute_activity(
-            judge,
-            JudgeInput(
-                job_id=job_id,
-                breakage_event=breakage_event,
-                breakage_hash=breakage_hash,
-            ),
-            start_to_close_timeout=datetime.timedelta(seconds=30),
-            retry_policy=_RETRY_JUDGE,
-        )
-
+        """MVP: report scrape breakage as failed (Judge/remap loop is post-parse)."""
         await workflow.execute_activity(
-            emit_webhook,
-            EmitWebhookInput(
-                event_id=workflow.uuid4().hex,
-                event_type=WebhookEventType.JOB_REMAP_PROPOSED.value,
-                job_id=job_id,
-                payload={
-                    "route": judge_result.route,
-                    "confidence": judge_result.confidence,
-                    "risk": judge_result.risk,
-                    "rationale": judge_result.rationale,
-                },
-            ),
-            start_to_close_timeout=datetime.timedelta(seconds=10),
-            retry_policy=_RETRY_WEBHOOK,
+            cleanup_sandbox,
+            CleanupSandboxInput(container_id=sandbox_container_id),
+            start_to_close_timeout=datetime.timedelta(seconds=30),
+            retry_policy=_RETRY_CLEANUP,
         )
-
-        await workflow.wait_condition(
-            lambda: self._remap_approved_proposal_id is not None or self._cancelled,
-        )
-
-        if self._cancelled:
-            return await self._do_cancel(job_id, sandbox_container_id)
-
+        await self._emit_failure(job_id, "scrape_breakage")
         return ScrapeJobResult(
             job_id=job_id,
-            status="breakage",
-            errors=scrape_result.errors,
+            status="failed",
+            errors=scrape_result.errors or ["scrape_map breakage"],
         )
 
     async def _handle_validation_breakage(

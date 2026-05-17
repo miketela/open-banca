@@ -1,6 +1,7 @@
 """Step dispatcher — maps action strings to executor callables."""
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -52,4 +53,6 @@ def dispatch_step(
         KeyError: Unknown action (programming error — map validation should catch this).
     """
     executor = STEP_DISPATCH_TABLE[step.action]
-    executor(page, step, **kwargs)
+    params = inspect.signature(executor).parameters
+    filtered = {k: v for k, v in kwargs.items() if k in params}
+    executor(page, step, **filtered)
