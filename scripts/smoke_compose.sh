@@ -4,22 +4,26 @@
 # Uso:
 #   bash scripts/smoke_compose.sh
 #
-# El script arranca el stack en background, espera que los healthchecks pasen,
-# ejecuta las verificaciones de API, y apaga el stack.
-# Retorna exit code 0 si todo pasa, 1 si algo falla.
+# Arranque escalonado (orden HU02): postgres-temporal → temporal-server →
+# docker-socket-proxy → api + temporal-worker. Comprueba healthchecks, GET
+# /healthz y /health, y que los logs del worker contengan "worker started".
+#
+# El script puede apagar el stack al salir salvo que se pida lo contrario:
+#   KEEP_UP=1 bash scripts/smoke_compose.sh
+# Con KEEP_UP=1 el stack queda levantado para depuración manual (operador).
 #
 # Variables de entorno que pueden sobreescribirse:
-#   API_PORT       Puerto de la API (default: 8080)
+#   API_PORT       Puerto de la API (default: OPEN_BANCA_API_PORT o 8080)
 #   COMPOSE_FILE   Archivo compose (default: docker-compose.yml)
 #   WAIT_TIMEOUT   Segundos de espera por healthchecks (default: 120)
-#   KEEP_UP        Si es "1", no apagar el stack al final (útil para debug)
+#   KEEP_UP        Si es "1", no apagar el stack al final (útil para debug del operador)
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-API_PORT="${API_PORT:-8080}"
+API_PORT="${API_PORT:-${OPEN_BANCA_API_PORT:-8080}}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-120}"
 KEEP_UP="${KEEP_UP:-0}"
@@ -46,10 +50,43 @@ cleanup() {
         log_info "Deteniendo stack..."
         docker compose -f "${COMPOSE_FILE}" down --remove-orphans --volumes 2>/dev/null || true
     else
-        log_info "KEEP_UP=1: stack sigue corriendo en background"
+        log_info "KEEP_UP=1: stack sigue corriendo para depuración (compose down omitido)"
     fi
 }
 trap cleanup EXIT
+
+wait_container_healthy() {
+    local compose_service="$1"
+    local start_time
+    start_time=$(date +%s)
+    log_info "Esperando healthcheck healthy: ${compose_service}"
+    while true; do
+        local elapsed
+        elapsed=$(($(date +%s) - start_time))
+        local cid
+        cid="$(docker compose -f "${COMPOSE_FILE}" ps -q "${compose_service}" 2>/dev/null || true)"
+        if [[ "${elapsed}" -ge "${WAIT_TIMEOUT}" ]]; then
+            log_fail "Timeout esperando ${compose_service} (${WAIT_TIMEOUT}s)"
+            docker compose -f "${COMPOSE_FILE}" logs "${compose_service}" 2>/dev/null | tail -20 || true
+            return 1
+        fi
+        if [[ -z "${cid}" ]]; then
+            sleep 2
+            continue
+        fi
+        local status
+        status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${cid}" 2>/dev/null || echo missing)
+        if [[ "${status}" == "healthy" ]]; then
+            log_ok "${compose_service} healthy"
+            return 0
+        elif [[ "${status}" == "unhealthy" ]]; then
+            log_fail "${compose_service} unhealthy"
+            docker compose -f "${COMPOSE_FILE}" logs "${compose_service}" 2>/dev/null | tail -20 || true
+            return 1
+        fi
+        sleep 3
+    done
+}
 
 # ---------------------------------------------------------------------------
 # Pre-checks
@@ -75,7 +112,8 @@ if [[ -z "${TEMPORAL_DB_PASSWORD:-}" ]]; then
     export TEMPORAL_DB_PASSWORD="smoke-test-temporal-$(date +%s)"
 fi
 if [[ -z "${WEBHOOK_HMAC_SECRET:-}" ]]; then
-    export WEBHOOK_HMAC_SECRET="smoke-test-hmac-$(date +%s)"
+    export WEBHOOK_HMAC_SECRET="$(uv run python -c 'import secrets; print(secrets.token_hex(32))')"
+    log_info "WEBHOOK_HMAC_SECRET no definida — generada clave hex temporal de test"
 fi
 if [[ -z "${API_KEY:-}" ]]; then
     export API_KEY="smoke-test-api-key-$(date +%s)"
@@ -96,48 +134,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Build + arranca stack
+# Build + arranque escalonado (HU02)
 # ---------------------------------------------------------------------------
 log_info "Construyendo imagen open-banca (puede tardar en primera ejecución)..."
 docker compose -f "${COMPOSE_FILE}" build api 2>&1 | tail -5
 
-log_info "Arrancando stack en background..."
-docker compose -f "${COMPOSE_FILE}" up -d 2>&1
+log_info "Fase 1: postgres-temporal..."
+docker compose -f "${COMPOSE_FILE}" up -d postgres-temporal 2>&1
+wait_container_healthy "postgres-temporal" || true
+
+log_info "Fase 2: temporal-server..."
+docker compose -f "${COMPOSE_FILE}" up -d temporal-server 2>&1
+wait_container_healthy "temporal-server" || true
+
+log_info "Fase 3: docker-socket-proxy..."
+docker compose -f "${COMPOSE_FILE}" up -d docker-socket-proxy 2>&1
+wait_container_healthy "docker-socket-proxy" || true
+
+log_info "Fase 4: api + temporal-worker..."
+docker compose -f "${COMPOSE_FILE}" up -d api temporal-worker 2>&1
 
 # ---------------------------------------------------------------------------
-# Esperar healthchecks
+# Esperar healthchecks restantes
 # ---------------------------------------------------------------------------
-log_info "Esperando healthchecks (timeout: ${WAIT_TIMEOUT}s)..."
+log_info "Esperando healthchecks de api y temporal-worker (timeout: ${WAIT_TIMEOUT}s)..."
 
-SERVICES=("open-banca-postgres-temporal" "open-banca-temporal" "open-banca-api")
-START_TIME=$(date +%s)
+wait_container_healthy "api" || true
+wait_container_healthy "temporal-worker" || true
 
-for SERVICE in "${SERVICES[@]}"; do
-    log_info "Esperando servicio: ${SERVICE}"
-    ELAPSED=0
-    while true; do
-        CURRENT_TIME=$(date +%s)
-        ELAPSED=$((CURRENT_TIME - START_TIME))
-
-        if [[ "${ELAPSED}" -ge "${WAIT_TIMEOUT}" ]]; then
-            log_fail "Timeout esperando ${SERVICE} (${WAIT_TIMEOUT}s)"
-            docker compose -f "${COMPOSE_FILE}" logs "${SERVICE}" 2>/dev/null | tail -20
-            break
-        fi
-
-        STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${SERVICE}" 2>/dev/null || echo "starting")
-        if [[ "${STATUS}" == "healthy" ]]; then
-            log_ok "${SERVICE} healthy"
-            break
-        elif [[ "${STATUS}" == "unhealthy" ]]; then
-            log_fail "${SERVICE} unhealthy"
-            docker compose -f "${COMPOSE_FILE}" logs "${SERVICE}" 2>/dev/null | tail -20
-            break
-        fi
-
-        sleep 3
-    done
-done
+# ---------------------------------------------------------------------------
+# Worker: logs deben incluir la frase registrada en worker.py
+# ---------------------------------------------------------------------------
+log_info "Verificando logs del temporal-worker ('worker started')..."
+if docker compose -f "${COMPOSE_FILE}" logs temporal-worker --tail 80 2>/dev/null | grep -q "worker started"; then
+    log_ok "temporal-worker logs contienen 'worker started'"
+else
+    log_fail "temporal-worker logs no contienen 'worker started'"
+    docker compose -f "${COMPOSE_FILE}" logs temporal-worker --tail 40 2>/dev/null || true
+fi
 
 # ---------------------------------------------------------------------------
 # Smoke tests de API
@@ -155,7 +189,17 @@ else
     docker compose -f "${COMPOSE_FILE}" logs api 2>/dev/null | tail -30
 fi
 
-# Test 2: GET /time → ISO timestamp
+# Test 2: GET /health → 200 (cuerpo status ok)
+log_info "Test: GET /health"
+HTTP_CODE_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "${API_BASE}/health" 2>/dev/null || echo "000")
+if [[ "${HTTP_CODE_HEALTH}" == "200" ]]; then
+    log_ok "GET /health → 200"
+else
+    log_fail "GET /health → ${HTTP_CODE_HEALTH} (esperado 200)"
+    docker compose -f "${COMPOSE_FILE}" logs api 2>/dev/null | tail -30
+fi
+
+# Test 3: GET /time → ISO timestamp
 log_info "Test: GET /time"
 RESPONSE=$(curl -s "${API_BASE}/time" 2>/dev/null || echo "")
 if echo "${RESPONSE}" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'; then
@@ -164,7 +208,7 @@ else
     log_fail "GET /time → respuesta inesperada: '${RESPONSE}'"
 fi
 
-# Test 3: GET /readyz — puede fallar si Temporal worker no está listo, no es fatal
+# Test 4: GET /readyz — puede fallar si Temporal worker no está listo, no es fatal
 log_info "Test: GET /readyz (informativo)"
 HTTP_CODE_READY=$(curl -s -o /dev/null -w "%{http_code}" "${API_BASE}/readyz" 2>/dev/null || echo "000")
 if [[ "${HTTP_CODE_READY}" == "200" ]]; then
