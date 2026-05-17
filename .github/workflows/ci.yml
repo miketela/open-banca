@@ -84,6 +84,14 @@ jobs:
         run: docker compose -f docker-compose.dev.yml config --quiet
 
       - name: Validate docker-compose.yml
+        env:
+          # Placeholders solo para `docker compose config` (sintaxis/interpolación).
+          # Producción sigue exigiendo valores reales vía .env (ver .env.example).
+          TEMPORAL_DB_PASSWORD: ci-validate-placeholder
+          OPEN_BANCA_MASTER_PASSPHRASE: ci-validate-placeholder
+          WEBHOOK_HMAC_SECRET: ci-validate-placeholder
+          API_KEY: ci-validate-placeholder
+          ANTHROPIC_API_KEY: ci-validate-placeholder
         run: |
           if [ -f docker-compose.yml ]; then
             docker compose -f docker-compose.yml config --quiet
