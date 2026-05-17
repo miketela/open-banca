@@ -65,6 +65,7 @@
 | [observability.md](./05-operations/observability.md) | Langfuse + OTel, trace correlation, SLI/SLO |
 | [cost-guardrails.md](./05-operations/cost-guardrails.md) | Caps LLM, rate limits, circuit breakers, alertas |
 | [testing.md](./05-operations/testing.md) | HAR replay, Excel fixtures, LLM mocks, smoke real |
+| [README-API.md](../README-API.md) | Guía práctica: levantar API, Bearer auth, scrape, jobs, webhooks |
 
 ### 06 — Bancos
 
