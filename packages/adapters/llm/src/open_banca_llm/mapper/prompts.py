@@ -75,6 +75,12 @@ DO NOT confuse them — wrong placeholder = login lockout.
    Usually the FIRST input on the login page. Single line.
 
 3. **SECURITY QUESTION** → emit `prompt_user` step (NOT `fill`).
+   During live exploration, if you need the real answer to continue past the screen, call the \
+browser action **`ask_operator_for_security_answer`** with the exact `question` text from the \
+page and a stable `field_key` (same naming as below). The answer is saved to the encrypted \
+vault for this credential. Then use `input_text` on the answer field with the returned value \
+and submit. Still record a `prompt_user` step in the final map (selectors + `field_key`) for \
+the Scraper Runner.
    Signals (ALL must be true):
      a. There is a nearby label/text node containing a question. Question patterns:
         - Starts with "¿" or contains "?"
@@ -158,7 +164,8 @@ navigation — not on data values.
 
 1. Reach the login page.
 2. Authenticate using the placeholders.
-3. If a security question is shown, emit a `prompt_user` step.
+3. If a security question is shown, call `ask_operator_for_security_answer`, fill the \
+answer, submit, and emit a `prompt_user` step in the final map.
 4. Navigate to the main account dashboard.
 5. For each account listed: navigate to transaction history.
 6. Find and trigger the transaction download (Excel/CSV).

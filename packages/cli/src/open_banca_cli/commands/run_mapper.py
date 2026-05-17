@@ -175,6 +175,7 @@ async def _run_live(bank: str, credential_label: str, bank_url: str) -> dict[str
     # credential_ref format: "<label>:<suffix>" (e.g. "personal:username")
     vault, _passphrase = open_vault_interactive()
     sensitive_data: dict[str, str] = {}
+    credential_ref = f"vault://{bank}/{credential_label}"
 
     with vault:
         for suffix in ("username", "password"):
@@ -188,27 +189,29 @@ async def _run_live(bank: str, credential_label: str, bank_url: str) -> dict[str
                     f"[yellow]Warning: could not load credential {field_label!r}: {exc}[/yellow]"
                 )
 
-    if not sensitive_data:
-        console.print("[red]No credentials resolved from vault. Register them first:[/red]")
-        console.print(
-            f"  uv run open-banca register-credentials --bank {bank} --label {credential_label}"
+        if not sensitive_data:
+            console.print("[red]No credentials resolved from vault. Register them first:[/red]")
+            console.print(
+                f"  uv run open-banca register-credentials --bank {bank} --label {credential_label}"
+            )
+            raise typer.Exit(code=1)
+
+        agent = MapperAgent(  # type: ignore[misc]
+            start_url_map={bank: bank_url},
+            cost_cap_usd=_COST_CAP_USD,
+            wallclock_cap_seconds=_WALLCLOCK_SECONDS,
+            interactive=True,
+            vault=vault,
         )
-        raise typer.Exit(code=1)
 
-    agent = MapperAgent(  # type: ignore[misc]
-        start_url_map={bank: bank_url},
-        cost_cap_usd=_COST_CAP_USD,
-        wallclock_cap_seconds=_WALLCLOCK_SECONDS,
-    )
+        console.print("[cyan]MapperAgent running — this may take up to 5 minutes...[/cyan]")
+        t_start = time.monotonic()
 
-    console.print("[cyan]MapperAgent running — this may take up to 5 minutes...[/cyan]")
-    t_start = time.monotonic()
-
-    bank_map = await agent.map_bank(
-        bank_id=bank,
-        credential_ref=f"vault://{bank}/{credential_label}",
-        sensitive_data=sensitive_data,
-    )
+        bank_map = await agent.map_bank(
+            bank_id=bank,
+            credential_ref=credential_ref,
+            sensitive_data=sensitive_data,
+        )
 
     elapsed = time.monotonic() - t_start
     console.print(f"[green]MapperAgent completed in {elapsed:.1f}s[/green]")

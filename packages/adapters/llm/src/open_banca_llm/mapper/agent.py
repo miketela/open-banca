@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, overload
@@ -277,6 +279,189 @@ class FakeChatModel:
         return ChatInvokeCompletion(completion=raw, usage=usage, stop_reason="end_turn")
 
 
+# ── Live-mapper terminal prompt for security questions (ADR-0021) ─────────────
+
+SECURITY_ANSWER_TOOL_NAME = "ask_operator_for_security_answer"
+_FIELD_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{2,32}$")
+
+
+def derive_field_key_from_question(question: str) -> str:
+    """Derive a stable ``field_key`` from question text (ADR-0021 regex)."""
+    text = unicodedata.normalize("NFC", question).lower()
+    text = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in text)
+    slug = "_".join(text.split()[:5]).strip("_")[:24]
+    slug = re.sub(r"_+", "_", slug)
+    key = f"security_q_{slug}" if slug else "security_q_unknown"
+    if not _FIELD_KEY_RE.match(key):
+        import hashlib
+
+        digest = hashlib.sha256(question.encode("utf-8")).hexdigest()[:8]
+        key = f"security_q_{digest}"
+    return key[:32]
+
+
+def store_mapper_security_answer_to_vault(
+    *,
+    vault: Any,
+    bank_id: str,
+    credential_ref: str,
+    field_key: str,
+    question_text: str,
+    answer: str,
+) -> None:
+    """Persist a security-answer to the vault ``security_q`` namespace (ADR-0021)."""
+    from open_banca_browser.step_executors.prompt_user import compute_question_hash  # noqa: PLC0415
+
+    question_hash = compute_question_hash(
+        bank_id=bank_id,
+        credential_id=credential_ref,
+        field_key=field_key,
+        question_text=question_text,
+    )
+    vault.store_security_answer(
+        credential_id=credential_ref,
+        question_hash=question_hash,
+        answer=answer,
+        field_key=field_key,
+    )
+    logger.info(
+        "MapperAgent: stored security answer in vault field_key=%s question_hash_prefix=%s",
+        field_key,
+        question_hash[:8],
+    )
+
+
+def prompt_security_answer_for_mapping(
+    question: str,
+    *,
+    bank_id: str | None = None,
+    prompt_fn: Any | None = None,
+) -> str | None:
+    """Ask the operator in the terminal for a security-question answer (mid-run mapper).
+
+    Used by the browser-use custom action during live mapping. Vault persistence is handled
+    by the caller when ``vault`` is available.
+    """
+    if prompt_fn is None:
+        try:
+            import typer  # type: ignore[import-untyped]
+
+            prompt_fn = lambda msg, **kw: typer.prompt(msg, **kw)  # noqa: E731
+        except ImportError:
+            prompt_fn = lambda msg, **kw: input(f"{msg}: ")  # noqa: E731
+
+    ctx = f" (bank_id={bank_id})" if bank_id else ""
+    print(f"\n[Mapper] Pregunta de seguridad detectada{ctx}:")
+    print(f"   {question.strip()}")
+
+    try:
+        answer = prompt_fn(
+            "Respuesta (oculta; Enter vacío para omitir)",
+            hide_input=True,
+            default="",
+        )
+        if not answer or not str(answer).strip():
+            logger.warning("prompt_security_answer_for_mapping: empty answer — skipped")
+            return None
+        return str(answer).strip()
+    except (KeyboardInterrupt, EOFError):
+        logger.info("prompt_security_answer_for_mapping: interrupted — skipped")
+        return None
+
+
+def build_mapper_browser_tools(
+    *,
+    bank_id: str | None = None,
+    credential_ref: str | None = None,
+    vault: Any | None = None,
+    prompt_fn: Any | None = None,
+) -> Any:
+    """Browser-use Tools with ``ask_operator_for_security_answer`` for supervised mapping."""
+    from browser_use import Tools  # type: ignore[import-untyped]
+    from browser_use.agent.views import ActionResult  # type: ignore[import-untyped]
+    from pydantic import Field
+
+    tools = Tools()
+
+    class AskSecurityAnswerParams(BaseModel):
+        question: str = Field(
+            description="Exact security question text shown on the page (copy from DOM/label)",
+        )
+        field_key: str | None = Field(
+            default=None,
+            description=(
+                "Stable key for this question (regex ^[a-z][a-z0-9_]{2,32}$), e.g. "
+                "security_q_grandpa_nickname. Omit to auto-derive from question text."
+            ),
+        )
+
+    @tools.action(
+        "Ask the human operator in the terminal for the answer to a bank security question. "
+        "Use when you see a security-question text input and credentials placeholders "
+        "do not apply. After receiving the answer, use input_text on the answer field "
+        "and click submit/continue.",
+        param_model=AskSecurityAnswerParams,
+    )
+    async def ask_operator_for_security_answer(
+        params: AskSecurityAnswerParams,
+        browser_session,
+    ) -> Any:
+        _ = browser_session  # required by browser-use action signature
+        answer = prompt_security_answer_for_mapping(
+            params.question,
+            bank_id=bank_id,
+            prompt_fn=prompt_fn,
+        )
+        if answer is None:
+            return ActionResult(
+                error="Operator skipped or gave an empty security answer",
+                extracted_content=(
+                    "No answer from operator. Retry ask_operator_for_security_answer "
+                    "or wait for manual input."
+                ),
+            )
+
+        field_key = (params.field_key or "").strip() or derive_field_key_from_question(
+            params.question
+        )
+        vault_stored = False
+        if vault is not None and bank_id and credential_ref:
+            try:
+                store_mapper_security_answer_to_vault(
+                    vault=vault,
+                    bank_id=bank_id,
+                    credential_ref=credential_ref,
+                    field_key=field_key,
+                    question_text=params.question,
+                    answer=answer,
+                )
+                vault_stored = True
+            except Exception as exc:
+                logger.warning(
+                    "MapperAgent: failed to store security answer in vault "
+                    "field_key=%s: %s",
+                    field_key,
+                    exc,
+                )
+
+        vault_note = (
+            " Answer encrypted and stored in vault for this credential."
+            if vault_stored
+            else ""
+        )
+        return ActionResult(
+            extracted_content=(
+                "Operator provided the security answer via terminal."
+                f"{vault_note} field_key={field_key}. "
+                "Use input_text on the security answer field with this value, then submit. "
+                f"Answer: {answer}"
+            ),
+            include_extracted_content_only_once=True,
+        )
+
+    return tools
+
+
 # ── CLI interactive prompt for security question pre-load (ADR-0021) ─────────
 
 
@@ -467,7 +652,14 @@ class MapperAgent:
             map_json_str = await self._run_stub(llm, task, sensitive_data)
         else:
             # Production path: use browser-use Agent with real Chromium
-            map_json_str = await self._run_with_browser(llm, task, sensitive_data, tracker)
+            map_json_str = await self._run_with_browser(
+                llm,
+                task,
+                sensitive_data,
+                tracker,
+                bank_id=bank_id,
+                credential_ref=credential_ref,
+            )
 
         if map_json_str is None:
             raise MapperError(f"Mapper agent returned no output for bank_id={bank_id}")
@@ -553,28 +745,14 @@ class MapperAgent:
                 )
                 continue
 
-            # Compute cache key (bank_id:credential_ref:field_key:normalize(question_text))
-            # In CLI preload, we don't have the live question text — use field_key as proxy.
-            # The hash will differ from runtime (which uses live DOM text), so this is
-            # a best-effort preload. Runtime will still cache on first real hit.
-            from open_banca_browser.step_executors.prompt_user import compute_question_hash  # noqa: PLC0415
-
-            question_hash = compute_question_hash(
-                bank_id=bank_id,
-                credential_id=credential_ref,
-                field_key=field_key,
-                question_text=field_key,  # placeholder — real text resolved at runtime
-            )
-
             try:
-                self._vault.store_security_answer(
-                    credential_id=credential_ref,
-                    question_hash=question_hash,
-                    answer=answer,
+                store_mapper_security_answer_to_vault(
+                    vault=self._vault,
+                    bank_id=bank_id,
+                    credential_ref=credential_ref,
                     field_key=field_key,
-                )
-                logger.info(
-                    "MapperAgent: preloaded vault answer for field_key=%s", field_key
+                    question_text=field_key,
+                    answer=answer,
                 )
             except Exception as exc:
                 logger.warning(
@@ -608,6 +786,9 @@ class MapperAgent:
         task: str,
         sensitive_data: dict[str, str],
         tracker: CostTracker,
+        *,
+        bank_id: str | None = None,
+        credential_ref: str | None = None,
     ) -> str:
         """Production path: use browser-use Agent with a real Chromium browser."""
         try:
@@ -615,14 +796,21 @@ class MapperAgent:
         except ImportError as exc:
             raise MapperError("browser-use not installed. Install from path dep or PyPI.") from exc
 
+        mapper_tools = build_mapper_browser_tools(
+            bank_id=bank_id,
+            credential_ref=credential_ref,
+            vault=self._vault,
+        )
+
         # flash_mode + use_thinking=False shrink the tool schema below
         # Anthropic's "compiled grammar too large" threshold (req fails otherwise
         # on the strict tool-calling path with the default browser-use schema).
         agent = Agent(  # type: ignore[call-arg]
             task=task,
             llm=llm,  # type: ignore[arg-type]
+            tools=mapper_tools,
             sensitive_data=sensitive_data,  # type: ignore[arg-type]
-            system_prompt_override=SYSTEM_PROMPT,
+            override_system_message=SYSTEM_PROMPT,
             max_steps=self._max_steps,
             register_should_stop_callback=tracker.should_stop_async,
             flash_mode=True,

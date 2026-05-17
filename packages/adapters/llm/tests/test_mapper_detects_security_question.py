@@ -16,7 +16,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from open_banca_llm.mapper.agent import FakeChatModel, MapperAgent, interactive_prompt
+from open_banca_llm.mapper.agent import (
+    SECURITY_ANSWER_TOOL_NAME,
+    FakeChatModel,
+    MapperAgent,
+    build_mapper_browser_tools,
+    derive_field_key_from_question,
+    interactive_prompt,
+    prompt_security_answer_for_mapping,
+    store_mapper_security_answer_to_vault,
+)
 from open_banca_llm.mapper.prompts import ALLOWED_STEP_TYPES, SYSTEM_PROMPT
 
 
@@ -28,6 +37,90 @@ def test_system_prompt_includes_prompt_user() -> None:
     assert "prompt_user" in SYSTEM_PROMPT, (
         "System prompt must include 'prompt_user' in allowed step types (ADR-0021)"
     )
+
+
+def test_system_prompt_includes_ask_operator_tool() -> None:
+    """SYSTEM_PROMPT must instruct use of ask_operator_for_security_answer during mapping."""
+    assert "ask_operator_for_security_answer" in SYSTEM_PROMPT
+
+
+def test_build_mapper_browser_tools_registers_security_action() -> None:
+    """Custom security-answer tool is registered on mapper Tools."""
+    tools = build_mapper_browser_tools(bank_id="banco_general")
+    assert SECURITY_ANSWER_TOOL_NAME in tools.registry.registry.actions
+
+
+def test_prompt_security_answer_for_mapping_returns_answer() -> None:
+    """Mid-run terminal prompt returns operator answer."""
+    answers = iter(["mi respuesta"])
+
+    def mock_prompt(_msg: str, **_kw: object) -> str:
+        return next(answers)
+
+    result = prompt_security_answer_for_mapping(
+        "¿Cuál es tu mascota?",
+        bank_id="banco_general",
+        prompt_fn=mock_prompt,
+    )
+    assert result == "mi respuesta"
+
+
+def test_derive_field_key_from_question_matches_regex() -> None:
+    """Auto-derived field_key satisfies ADR-0021 regex."""
+    key = derive_field_key_from_question("¿Cuál es el apodo de tu abuelo?")
+    assert key.startswith("security_q_")
+    assert 3 <= len(key) <= 32
+    assert key.replace("_", "").isalnum()
+
+
+def test_store_mapper_security_answer_to_vault_calls_vault() -> None:
+    """Mid-run vault store uses compute_question_hash with live question text."""
+    vault = MagicMock()
+    store_mapper_security_answer_to_vault(
+        vault=vault,
+        bank_id="banco_general",
+        credential_ref="vault://banco_general/personal",
+        field_key="security_q_grandpa_nickname",
+        question_text="¿Cuál es el apodo de tu abuelo?",
+        answer="Pepe",
+    )
+    vault.store_security_answer.assert_called_once()
+    call_kw = vault.store_security_answer.call_args.kwargs
+    assert call_kw["credential_id"] == "vault://banco_general/personal"
+    assert call_kw["field_key"] == "security_q_grandpa_nickname"
+    assert call_kw["answer"] == "Pepe"
+    assert len(call_kw["question_hash"]) == 64
+
+
+@pytest.mark.asyncio
+async def test_security_tool_stores_answer_in_vault_when_configured() -> None:
+    """ask_operator_for_security_answer persists to vault when vault is wired."""
+    vault = MagicMock()
+    tools = build_mapper_browser_tools(
+        bank_id="banco_general",
+        credential_ref="vault://banco_general/personal",
+        vault=vault,
+        prompt_fn=lambda _msg, **_kw: "firulais",
+    )
+    action = tools.registry.registry.actions[SECURITY_ANSWER_TOOL_NAME]
+    await action.function(
+        params=action.param_model(
+            question="¿Cuál es tu primera mascota?",
+            field_key="security_q_first_pet",
+        ),
+        browser_session=MagicMock(),
+    )
+    vault.store_security_answer.assert_called_once()
+
+
+def test_prompt_security_answer_for_mapping_empty_returns_none() -> None:
+    """Empty answer from operator yields None."""
+
+    def mock_prompt(_msg: str, **_kw: object) -> str:
+        return ""
+
+    result = prompt_security_answer_for_mapping("¿Color favorito?", prompt_fn=mock_prompt)
+    assert result is None
 
 
 def test_allowed_step_types_includes_prompt_user() -> None:
