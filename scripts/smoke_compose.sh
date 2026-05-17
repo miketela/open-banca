@@ -13,7 +13,7 @@
 # Con KEEP_UP=1 el stack queda levantado para depuración manual (operador).
 #
 # Variables de entorno que pueden sobreescribirse:
-#   API_PORT       Puerto de la API (default: 8080)
+#   API_PORT       Puerto de la API (default: OPEN_BANCA_API_PORT o 8080)
 #   COMPOSE_FILE   Archivo compose (default: docker-compose.yml)
 #   WAIT_TIMEOUT   Segundos de espera por healthchecks (default: 120)
 #   KEEP_UP        Si es "1", no apagar el stack al final (útil para debug del operador)
@@ -23,7 +23,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-API_PORT="${API_PORT:-8080}"
+API_PORT="${API_PORT:-${OPEN_BANCA_API_PORT:-8080}}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-120}"
 KEEP_UP="${KEEP_UP:-0}"
@@ -112,7 +112,8 @@ if [[ -z "${TEMPORAL_DB_PASSWORD:-}" ]]; then
     export TEMPORAL_DB_PASSWORD="smoke-test-temporal-$(date +%s)"
 fi
 if [[ -z "${WEBHOOK_HMAC_SECRET:-}" ]]; then
-    export WEBHOOK_HMAC_SECRET="smoke-test-hmac-$(date +%s)"
+    export WEBHOOK_HMAC_SECRET="$(uv run python -c 'import secrets; print(secrets.token_hex(32))')"
+    log_info "WEBHOOK_HMAC_SECRET no definida — generada clave hex temporal de test"
 fi
 if [[ -z "${API_KEY:-}" ]]; then
     export API_KEY="smoke-test-api-key-$(date +%s)"

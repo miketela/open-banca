@@ -50,8 +50,17 @@ def _strip_val(raw: str) -> str:
 
 
 def needs_placeholder(value: str) -> bool:
+    """Only replace .env.example template literals, not operator-edited values."""
     v = _strip_val(value)
-    return not v or v.startswith("CHANGE_ME")
+    if not v:
+        return True
+    # Exact templates shipped in .env.example (avoid regenerating partial edits).
+    example_templates = {
+        "CHANGE_ME_use_python_secrets_token_urlsafe_32",
+        "CHANGE_ME_use_python_secrets_token_hex_32",
+        "CHANGE_ME_use_python_secrets_token_urlsafe_24",
+    }
+    return v in example_templates
 
 
 def gen_for_key(key: str) -> str:

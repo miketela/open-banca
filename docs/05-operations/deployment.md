@@ -212,7 +212,7 @@ Comprueba estado: `docker compose ps` — servicios con healthcheck deberían pa
 
 ### 5) Verificación rápida
 
-Sustituye el puerto si definiste `OPEN_BANCA_API_PORT` distinto de `8080`:
+Sustituye el puerto si definiste `OPEN_BANCA_API_PORT` distinto de `8080` (el smoke script `scripts/smoke_compose.sh` usa la misma variable vía `API_PORT`):
 
 ```bash
 curl -fsS "http://localhost:${OPEN_BANCA_API_PORT:-8080}/healthz"

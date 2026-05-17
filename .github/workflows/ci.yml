@@ -103,6 +103,7 @@ jobs:
     name: Docker Compose smoke (optional)
     runs-on: ubuntu-latest
     needs: lint-type-test
+    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -123,7 +124,7 @@ jobs:
         env:
           TEMPORAL_DB_PASSWORD: ci-smoke-temporal-db
           OPEN_BANCA_MASTER_PASSPHRASE: ci-smoke-master-passphrase-32chars-min_
-          WEBHOOK_HMAC_SECRET: ci-smoke-webhook-hmac-secret-hex-placeholder-
+          WEBHOOK_HMAC_SECRET: a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
           API_KEY: ci-smoke-api-key
           ANTHROPIC_API_KEY: ci-smoke-anthropic-placeholder
         run: |

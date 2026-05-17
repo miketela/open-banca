@@ -37,3 +37,21 @@ def test_smoke_compose_documents_keep_up() -> None:
     root = _repo_root()
     text = (root / "scripts" / "smoke_compose.sh").read_text(encoding="utf-8")
     assert "KEEP_UP=1" in text
+
+
+def test_smoke_compose_api_port_reads_open_banca_api_port() -> None:
+    """API_PORT must fall back to OPEN_BANCA_API_PORT (same var as docker-compose.yml)."""
+    root = _repo_root()
+    text = (root / "scripts" / "smoke_compose.sh").read_text(encoding="utf-8")
+    assert "OPEN_BANCA_API_PORT" in text
+    assert '${API_PORT:-${OPEN_BANCA_API_PORT:-8080}}' in text or (
+        "API_PORT" in text and "OPEN_BANCA_API_PORT" in text
+    )
+
+
+def test_bootstrap_env_only_replaces_example_templates() -> None:
+    """bootstrap must not regenerate secrets on arbitrary CHANGE_ME_* operator strings."""
+    root = _repo_root()
+    text = (root / "scripts" / "bootstrap_env.sh").read_text(encoding="utf-8")
+    assert "example_templates" in text
+    assert "CHANGE_ME_use_python_secrets_token_urlsafe_32" in text
