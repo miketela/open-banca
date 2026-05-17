@@ -12,6 +12,8 @@ from open_banca_api.dependencies import (
     TemporalOrchestratorAdapter,
     get_get_job_result_uc,
     get_job_store,
+    get_secret_vault,
+    get_storage_connection,
     get_temporal_client,
 )
 from open_banca_api.schemas.jobs import HumanInputRequest
@@ -159,6 +161,8 @@ async def human_input(
     job_id: str,
     body: HumanInputRequest,
     job_store: Annotated[object, Depends(get_job_store)],
+    storage_conn: Annotated[object, Depends(get_storage_connection)],
+    vault: Annotated[object, Depends(get_secret_vault)],
     orchestrator: Annotated[TemporalOrchestratorAdapter, Depends(get_temporal_client)],
 ) -> None:
     """POST /jobs/{id}/human-input — deliver answer for prompt_user step.
@@ -189,6 +193,26 @@ async def human_input(
             },
         )
 
+    job_store.save_human_input_answer(  # type: ignore[attr-defined]
+        job_id,
+        body.field_key,
+        body.answer,
+        persist=body.persist,
+    )
+
+    if body.persist:
+        question_hash = job_store.get_human_input_question_hash(  # type: ignore[attr-defined]
+            job_id, body.field_key
+        )
+        if question_hash is not None:
+            credential_id = _resolve_credential_id(storage_conn, job.credential_ref)
+            vault.store_security_answer(  # type: ignore[attr-defined]
+                credential_id,
+                question_hash,
+                body.answer,
+                field_key=body.field_key,
+            )
+
     try:
         await orchestrator.async_signal_human_input_provided(
             job_id=job_id,
@@ -208,6 +232,24 @@ async def human_input(
         body.field_key,
         body.persist,
     )
+
+
+def _resolve_credential_id(conn: object, credential_ref: str) -> str:
+    row = conn.execute(  # type: ignore[attr-defined]
+        "SELECT id FROM credentials WHERE label = ? ORDER BY created_at DESC LIMIT 1",
+        (f"{credential_ref}:username",),
+    ).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT id FROM credentials WHERE credential_ref = ? LIMIT 1",
+            (credential_ref,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "credential_not_found", "credential_ref": credential_ref},
+        )
+    return str(row[0])
 
 
 @router.post(

@@ -26,6 +26,8 @@ os.environ.setdefault("OPEN_BANCA_DB_PATH", ":memory:")
 from open_banca_api.config import get_settings  # noqa: E402
 from open_banca_api.dependencies import (  # noqa: E402
     get_job_store,
+    get_secret_vault,
+    get_storage_connection,
     get_temporal_client,
     get_webhook_outbox,
 )
@@ -50,9 +52,25 @@ def _make_job(status: JobStatus = JobStatus.HUMAN_INPUT_REQUIRED) -> Job:
 class _StubJobStore:
     def __init__(self, job: Job | None) -> None:
         self._job = job
+        self.saved_answers: list[dict] = []
 
     def load_job(self, job_id: str) -> Job | None:
         return self._job
+
+    def save_human_input_answer(
+        self, job_id: str, field_key: str, answer: str, *, persist: bool = True
+    ) -> None:
+        self.saved_answers.append(
+            {
+                "job_id": job_id,
+                "field_key": field_key,
+                "answer": answer,
+                "persist": persist,
+            }
+        )
+
+    def get_human_input_question_hash(self, job_id: str, field_key: str) -> str | None:
+        return None
 
     def save_job(self, job: Any) -> None:
         pass
@@ -151,14 +169,17 @@ def client_with(tmp_path: Any) -> Any:
     def _factory(
         job: Job | None,
         signal_raises: Exception | None = None,
-    ) -> tuple[TestClient, _StubTemporalAdapter]:
+    ) -> tuple[TestClient, _StubTemporalAdapter, _StubJobStore]:
         get_settings.cache_clear()
         app = create_app()
         adapter = _StubTemporalAdapter(signal_raises=signal_raises)
-        app.dependency_overrides[get_job_store] = lambda: _StubJobStore(job)
+        store = _StubJobStore(job)
+        app.dependency_overrides[get_job_store] = lambda: store
+        app.dependency_overrides[get_storage_connection] = lambda: MagicMock()
+        app.dependency_overrides[get_secret_vault] = lambda: MagicMock()
         app.dependency_overrides[get_temporal_client] = lambda: adapter
         app.dependency_overrides[get_webhook_outbox] = lambda: _NullEventBus()
-        return TestClient(app, raise_server_exceptions=True), adapter
+        return TestClient(app, raise_server_exceptions=True), adapter, store
 
     return _factory
 
@@ -167,13 +188,15 @@ def client_with(tmp_path: Any) -> Any:
 
 
 def test_human_input_valid_returns_204(client_with: Any) -> None:
-    client, adapter = client_with(_make_job())
+    client, adapter, store = client_with(_make_job())
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "security_q_pet", "answer": "Fluffy"},
         headers=AUTH,
     )
     assert resp.status_code == 204
+    assert len(store.saved_answers) == 1
+    assert store.saved_answers[0]["answer"] == "Fluffy"
     assert len(adapter.signal_calls) == 1
     assert adapter.signal_calls[0]["field_key"] == "security_q_pet"
     assert adapter.signal_calls[0]["answer"] == "Fluffy"
@@ -184,7 +207,7 @@ def test_human_input_valid_returns_204(client_with: Any) -> None:
 
 
 def test_human_input_job_not_found_returns_404(client_with: Any) -> None:
-    client, _ = client_with(None)
+    client, _, _ = client_with(None)
     resp = client.post(
         "/jobs/no-such-job/human-input",
         json={"field_key": "security_q_pet", "answer": "Fluffy"},
@@ -197,7 +220,7 @@ def test_human_input_job_not_found_returns_404(client_with: Any) -> None:
 
 
 def test_human_input_wrong_state_returns_409(client_with: Any) -> None:
-    client, _ = client_with(_make_job(JobStatus.RUNNING))
+    client, _, _ = client_with(_make_job(JobStatus.RUNNING))
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "security_q_pet", "answer": "Fluffy"},
@@ -211,7 +234,7 @@ def test_human_input_wrong_state_returns_409(client_with: Any) -> None:
 
 
 def test_human_input_answer_too_long_returns_422(client_with: Any) -> None:
-    client, _ = client_with(_make_job())
+    client, _, _ = client_with(_make_job())
     long_answer = "a" * 300  # > 256 bytes
     resp = client.post(
         "/jobs/job-test-001/human-input",
@@ -225,7 +248,7 @@ def test_human_input_answer_too_long_returns_422(client_with: Any) -> None:
 
 
 def test_human_input_control_char_returns_422(client_with: Any) -> None:
-    client, _ = client_with(_make_job())
+    client, _, _ = client_with(_make_job())
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "security_q_pet", "answer": "Fluffy\x00evilbyte"},
@@ -237,7 +260,7 @@ def test_human_input_control_char_returns_422(client_with: Any) -> None:
 def test_human_input_xss_like_answer_rejected(client_with: Any) -> None:
     """<script> tags contain < and > which are fine by unicode category, but
     the embed direction mark U+202E is a Cf category and should be rejected."""
-    client, _ = client_with(_make_job())
+    client, _, _ = client_with(_make_job())
     # Try embedding a direction mark (Cf category)
     answer_with_dir_mark = "Fluffy‮evil"
     resp = client.post(
@@ -252,7 +275,7 @@ def test_human_input_xss_like_answer_rejected(client_with: Any) -> None:
 
 
 def test_human_input_invalid_field_key_returns_422(client_with: Any) -> None:
-    client, _ = client_with(_make_job())
+    client, _, _ = client_with(_make_job())
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "InvalidKey", "answer": "Fluffy"},
@@ -262,7 +285,7 @@ def test_human_input_invalid_field_key_returns_422(client_with: Any) -> None:
 
 
 def test_human_input_field_key_too_short_returns_422(client_with: Any) -> None:
-    client, _ = client_with(_make_job())
+    client, _, _ = client_with(_make_job())
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "ab", "answer": "Fluffy"},
@@ -275,7 +298,7 @@ def test_human_input_field_key_too_short_returns_422(client_with: Any) -> None:
 
 
 def test_human_input_signal_failure_returns_503(client_with: Any) -> None:
-    client, _ = client_with(
+    client, _, _ = client_with(
         _make_job(),
         signal_raises=RuntimeError("Temporal unreachable"),
     )
@@ -292,7 +315,7 @@ def test_human_input_signal_failure_returns_503(client_with: Any) -> None:
 
 def test_human_input_persist_false_signals_workflow(client_with: Any) -> None:
     """persist=false still signals the workflow; cache write is opt-out."""
-    client, adapter = client_with(_make_job())
+    client, adapter, _store = client_with(_make_job())
     resp = client.post(
         "/jobs/job-test-001/human-input",
         json={"field_key": "security_q_pet", "answer": "Fluffy", "persist": False},

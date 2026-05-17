@@ -185,3 +185,19 @@ def execute_prompt_user(
         selector=answer_selector,
         timeout_s=timeout_s,
     )
+
+
+def fill_prompt_user_answer(page: Any, selector: str, answer: str) -> None:
+    """Fill the answer input after human input was delivered."""
+    try:
+        ans_locator = page.locator(selector)
+        if ans_locator.count() == 0:
+            raise SelectorNotFound(f"prompt_user: answer selector not found: {selector!r}")
+        ans_locator.fill(answer, timeout=10_000)
+    except SelectorNotFound:
+        raise
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "timeout" in msg:
+            raise StepTimeout(f"prompt_user: fill timeout on {selector!r}") from exc
+        raise StepTimeout(f"prompt_user: fill error: {exc}") from exc

@@ -88,6 +88,102 @@ class SqliteJobStore:
         ).fetchall()
         return [_row_to_job(row) for row in rows]
 
+    def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """Update job status (and optional error message) without replacing the row."""
+        now = _utcnow_iso()
+        self._conn.execute(
+            """
+            UPDATE jobs
+            SET status = ?, error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (str(status), error, now, job_id),
+        )
+        self._conn.commit()
+        logger.debug("update_job_status: %s status=%s", job_id, status)
+
+    def save_human_input_pending(
+        self, job_id: str, field_key: str, question_hash: str
+    ) -> None:
+        """Record question_hash when a prompt_user step pauses (answer not yet known)."""
+        self._conn.execute(
+            """
+            INSERT INTO human_input_answers (
+                job_id, field_key, answer, persist, question_hash, created_at
+            )
+            VALUES (?, ?, NULL, 1, ?, ?)
+            ON CONFLICT(job_id, field_key) DO UPDATE SET
+                question_hash = excluded.question_hash,
+                created_at = excluded.created_at
+            """,
+            (job_id, field_key, question_hash, _utcnow_iso()),
+        )
+        self._conn.commit()
+
+    def save_human_input_answer(
+        self,
+        job_id: str,
+        field_key: str,
+        answer: str,
+        *,
+        persist: bool = True,
+    ) -> None:
+        """Store operator answer for a pending prompt_user step (upsert)."""
+        self._conn.execute(
+            """
+            INSERT INTO human_input_answers (
+                job_id, field_key, answer, persist, question_hash, created_at
+            )
+            VALUES (?, ?, ?, ?, NULL, ?)
+            ON CONFLICT(job_id, field_key) DO UPDATE SET
+                answer = excluded.answer,
+                persist = excluded.persist,
+                created_at = excluded.created_at
+            """,
+            (job_id, field_key, answer, int(persist), _utcnow_iso()),
+        )
+        self._conn.commit()
+
+    def get_human_input_question_hash(self, job_id: str, field_key: str) -> str | None:
+        """Return cached question_hash for a pending human-input row, if any."""
+        row = self._conn.execute(
+            """
+            SELECT question_hash FROM human_input_answers
+            WHERE job_id = ? AND field_key = ?
+            """,
+            (job_id, field_key),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return str(row[0])
+
+    def take_human_input_answer(
+        self, job_id: str, field_key: str
+    ) -> tuple[str, bool] | None:
+        """Return and delete a pending human-input answer, if present."""
+        row = self._conn.execute(
+            """
+            SELECT answer, persist FROM human_input_answers
+            WHERE job_id = ? AND field_key = ? AND answer IS NOT NULL
+            """,
+            (job_id, field_key),
+        ).fetchone()
+        if row is None:
+            return None
+        answer, persist_int = row[0], bool(row[1])
+        self._conn.execute(
+            "DELETE FROM human_input_answers WHERE job_id = ? AND field_key = ?",
+            (job_id, field_key),
+        )
+        self._conn.commit()
+        return str(answer), persist_int
+
     # ── Accounts ──────────────────────────────────────────────────────────────
 
     def save_account(self, account: AccountUnion) -> None:

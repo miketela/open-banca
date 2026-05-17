@@ -356,8 +356,8 @@ def prompt_security_answer_for_mapping(
 
     try:
         answer = prompt_fn(
-            "Respuesta (oculta; Enter vacío para omitir)",
-            hide_input=True,
+            "Respuesta (Enter vacío para omitir)",
+            hide_input=False,
             default="",
         )
         if not answer or not str(answer).strip():
@@ -506,8 +506,8 @@ def interactive_prompt(
             return None
 
         answer = prompt_fn(
-            f"answer para '{field_key}' (oculto)",
-            hide_input=True,
+            f"answer para '{field_key}'",
+            hide_input=False,
             default="",
         )
         if not answer:
@@ -828,38 +828,66 @@ class MapperAgent:
         # Check if should_stop fired (cost/wallclock exceeded)
         if tracker.should_stop():
             usage = tracker.usage
-            raise CostExceeded(usage.cost_usd, self._cost_cap)
+            if usage.cost_usd > self._cost_cap:
+                raise CostExceeded(usage.cost_usd, self._cost_cap)
+            else:
+                raise WallclockExceeded(
+                    tracker.elapsed_s,
+                    self._wallclock_cap,
+                )
 
         # Extract final result from agent history
         return self._extract_map_from_history(history)
 
     def _extract_map_from_history(self, history: Any) -> str:
         """Extract map JSON from browser-use AgentHistoryList."""
+        extracted = None
         # browser-use stores the done() result in the last action's result
         try:
             if hasattr(history, "final_result"):
-                result = history.final_result()
-                if result:
-                    return str(result)
+                res = history.final_result()
+                if res:
+                    extracted = str(res)
+            
             # Fallback: search action history for done result
-            if hasattr(history, "history"):
+            if not extracted and hasattr(history, "history"):
                 for item in reversed(history.history):
                     if hasattr(item, "result") and item.result:
                         for r in item.result:
                             if hasattr(r, "extracted_content") and r.extracted_content:
-                                return str(r.extracted_content)
+                                extracted = str(r.extracted_content)
+                                break
+                    if extracted:
+                        break
         except Exception as exc:
             logger.warning("Could not extract map from history: %s", exc)
 
-        raise MapperError("Could not extract map JSON from browser-use agent history")
+        if not extracted:
+            raise MapperError("Could not extract map JSON from browser-use agent history")
+            
+        # Log extracted content snippet to help debug parser errors
+        snippet = extracted[:100] + "..." if len(extracted) > 100 else extracted
+        logger.info("MapperAgent: Extracted map output snippet: %r", snippet)
+        return extracted
 
     def _parse_bank_map(self, raw: str, bank_id: str) -> BankMap:
         """Parse and validate raw JSON string into a domain BankMap."""
         # Strip markdown code fences if present
         text = raw.strip()
-        if text.startswith("```"):
+        
+        # If the text contains markdown JSON blocks, extract just the JSON
+        if "```json" in text:
+            # Find the first ```json and the corresponding closing ```
+            parts = text.split("```json")
+            if len(parts) > 1:
+                content = parts[1].split("```")[0]
+                text = content.strip()
+        elif text.startswith("```"):
             lines = text.splitlines()
             text = "\n".join(line for line in lines if not line.startswith("```")).strip()
+
+        if not text:
+            raise MapperError("Extracted text was empty after markdown strip")
 
         try:
             data = json.loads(text)

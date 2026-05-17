@@ -12,8 +12,13 @@ from collections.abc import Callable
 from typing import Any
 
 from open_banca_browser.breakage import build_breakage_event
-from open_banca_browser.errors import ScraperError
+from open_banca_browser.errors import HumanInputRequired, ScraperError
+from open_banca_browser.human_input_waiter import PollingHumanInputWaiter
 from open_banca_browser.screenshot import capture_screenshot
+from open_banca_browser.step_executors.prompt_user import (
+    SecurityAnswerVault,
+    fill_prompt_user_answer,
+)
 from open_banca_browser.step_dispatcher import dispatch_step
 from open_banca_browser.step_executors._utils import extra
 from open_banca_domain.entities.bank_map import BankMap
@@ -47,6 +52,9 @@ class ScraperRunner:
         secret_resolver: Callable mapping value_ref → plaintext secret.
                          Required for maps with 'fill' steps.
         headless: Run Chromium in headless mode. Defaults to True.
+        human_input_waiter: Polls storage until operator delivers prompt_user answers.
+        vault: Security-answer vault for cache persistence after human input.
+        credential_id: Credential UUID for vault keys (defaults to credential.id).
     """
 
     def __init__(
@@ -55,12 +63,18 @@ class ScraperRunner:
         job_id_provider: Callable[[], str] | None = None,
         secret_resolver: Callable[[str], str] | None = None,
         headless: bool = True,
+        human_input_waiter: PollingHumanInputWaiter | None = None,
+        vault: SecurityAnswerVault | None = None,
+        credential_id: str | None = None,
     ) -> None:
         self._job_id_provider = job_id_provider or _default_job_id_provider
         self._secret_resolver: Callable[[str], str] = (
             secret_resolver or _raise_on_unresolved
         )
         self._headless = headless
+        self._human_input_waiter = human_input_waiter
+        self._vault = vault
+        self._credential_id = credential_id
 
     def execute_map(self, map: BankMap, credential: Credential) -> ScrapeResult:
         """Execute all steps in the BankMap sequentially.
@@ -122,6 +136,7 @@ class ScraperRunner:
         breakage_events: list[BreakageEvent] = []
         download_store: list[bytes] = []
         extracted_rows: list[dict[str, str]] = []
+        cred_id = self._credential_id or credential.id
 
         for step_index, step in enumerate(map.steps):
             logger.debug(
@@ -134,7 +149,29 @@ class ScraperRunner:
                     secret_resolver=self._secret_resolver,
                     download_store=download_store,
                     extracted_rows=extracted_rows,
+                    vault=self._vault,
+                    bank_id=map.bank_id,
+                    credential_id=cred_id,
                 )
+            except HumanInputRequired as exc:
+                if self._human_input_waiter is None:
+                    raise
+                logger.info(
+                    "job=%s step=%d action=%s human input required field_key=%s",
+                    job_id,
+                    step_index,
+                    step.action,
+                    exc.field_key,
+                )
+                answer, persist = self._human_input_waiter.wait_for_answer(exc)
+                if persist and self._vault is not None:
+                    self._vault.store_security_answer(
+                        cred_id,
+                        exc.question_hash,
+                        answer,
+                        field_key=exc.field_key,
+                    )
+                fill_prompt_user_answer(page, exc.selector, answer)
             except ScraperError as exc:
                 logger.warning(
                     "job=%s step=%d action=%s FAILED: %s",

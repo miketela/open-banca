@@ -264,6 +264,24 @@ def get_job_store(
     return SqliteJobStore(conn)
 
 
+def get_secret_vault() -> object:
+    """Return a SecretVault for the current request."""
+    from open_banca_storage import SecretVault
+    from open_banca_storage.connection import ConnectionPool, PassthroughKeyDerivation
+
+    db_path = Path(os.environ.get("OPEN_BANCA_DB_PATH", "/data/open_banca.db"))
+    passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "dev-insecure-passphrase")
+    try:
+        from open_banca_storage.kdf import Argon2idKeyDerivation
+
+        kdf = Argon2idKeyDerivation()
+    except Exception:
+        kdf = PassthroughKeyDerivation()  # type: ignore[assignment]
+
+    pool = ConnectionPool(db_path=db_path, passphrase=passphrase, key_derivation=kdf)
+    return SecretVault(pool=pool, master_passphrase=passphrase)
+
+
 def get_webhook_outbox(
     conn: Annotated[object, Depends(get_storage_connection)],
     settings: Annotated[Settings, Depends(get_settings)],

@@ -206,5 +206,7 @@ class TestWorkerRegistration:
     def test_activity_count(self) -> None:
         from open_banca_orchestrator.worker import _ASYNC_ACTIVITIES, _SYNC_ACTIVITIES
 
-        assert len(_ASYNC_ACTIVITIES) == 14
+        activity_funcs = [a.__name__ for a in _ASYNC_ACTIVITIES]
+        assert len(_ASYNC_ACTIVITIES) == 15
+        assert "execute_scrape_map" in activity_funcs
         assert len(_SYNC_ACTIVITIES) == 1

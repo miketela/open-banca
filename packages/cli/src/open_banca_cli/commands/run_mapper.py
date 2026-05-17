@@ -83,6 +83,13 @@ def run_mapper(
             help="Max LLM spend for this mapper run (USD)",
         ),
     ] = _COST_CAP_USD,
+    wallclock_cap_s: Annotated[
+        float,
+        typer.Option(
+            "--wallclock-cap-s",
+            help="Max wallclock time for this mapper run (seconds)",
+        ),
+    ] = _WALLCLOCK_SECONDS,
 ) -> None:
     """Run the MapperAgent to produce a BankMap for BANK.
 
@@ -135,12 +142,12 @@ def run_mapper(
             f"start_url : {bank_url}\n"
             f"output    : {map_output_path}\n"
             f"cost_cap  : ${cost_cap_usd:.2f}\n"
-            f"wallclock : {int(_WALLCLOCK_SECONDS)}s",
+            f"wallclock : {int(wallclock_cap_s)}s",
             title="open-banca run-mapper",
         )
     )
 
-    bank_map_dict = asyncio.run(_run_live(bank, credential, bank_url, cost_cap_usd=cost_cap_usd))
+    bank_map_dict = asyncio.run(_run_live(bank, credential, bank_url, cost_cap_usd=cost_cap_usd, wallclock_cap_seconds=wallclock_cap_s))
 
     # Write output
     map_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,6 +168,7 @@ async def _run_live(
     bank_url: str,
     *,
     cost_cap_usd: float = _COST_CAP_USD,
+    wallclock_cap_seconds: float = _WALLCLOCK_SECONDS,
 ) -> dict[str, object]:
     """Execute the MapperAgent against the live bank website.
 
@@ -212,7 +220,7 @@ async def _run_live(
         agent = MapperAgent(  # type: ignore[misc]
             start_url_map={bank: bank_url},
             cost_cap_usd=cost_cap_usd,
-            wallclock_cap_seconds=_WALLCLOCK_SECONDS,
+            wallclock_cap_seconds=wallclock_cap_seconds,
             interactive=True,
             vault=vault,
         )

@@ -56,6 +56,7 @@ def test_migrate_creates_all_tables(in_memory_pool):
         "audit_log",
         "webhook_outbox",
         "cursors",  # 8th table added for JobStorePort cursor methods
+        "human_input_answers",
         "schema_migrations",
     }
     assert expected <= table_names, f"Missing tables: {expected - table_names}"
@@ -81,6 +82,7 @@ def test_schema_migrations_tracks_files(in_memory_pool):
     filenames = [r[0] for r in rows]
     assert "001_initial.sql" in filenames
     assert "002_task31_extensions.sql" in filenames
+    assert "004_human_input_answers.sql" in filenames
 
 
 def test_wrong_key_raises(tmp_path):

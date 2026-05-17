@@ -46,6 +46,7 @@ from open_banca_orchestrator.activities import (
     cleanup_sandbox,
     download_excel,
     emit_webhook,
+    execute_scrape_map,
     human_input_await,
     judge,
     list_accounts,
@@ -86,6 +87,7 @@ _ASYNC_ACTIVITIES = [
     remapper_agent,     # RemapperAgentActivity
     emit_webhook,       # EmitWebhookActivity
     spawn_sandbox,      # SpawnSandboxActivity
+    execute_scrape_map,  # ExecuteScrapeMapActivity (Playwright map runner)
     cleanup_sandbox,    # CleanupSandboxActivity
     persist_result,     # PersistResultActivity
     list_accounts,      # ListAccountsActivity

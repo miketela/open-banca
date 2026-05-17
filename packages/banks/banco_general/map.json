@@ -1,116 +1,147 @@
 {
   "bank_id": "banco_general",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "schema_version": "1",
-  "signature": null,
   "steps": [
     {
-      "step_id": "login_navigate",
+      "step_id": "navigate_homepage",
       "action": "navigate",
-      "url": "https://www.bfranchservice.bancogeneral.com/eBanking4/Login.aspx"
+      "url": "https://www.bgeneral.com/",
+      "wait_until": "domcontentloaded"
     },
     {
-      "step_id": "login_wait_form",
+      "step_id": "open_banca_en_linea_dropdown",
+      "action": "click",
+      "selector": "#btn-login"
+    },
+    {
+      "step_id": "wait_for_login_widget",
       "action": "wait_for_selector",
-      "selector": "[id*='user'], [id*='usuario'], input[type='text']:first-of-type",
+      "selector": "#txtLoginD",
+      "state": "visible",
+      "timeout_ms": 10000
+    },
+    {
+      "step_id": "fill_username",
+      "action": "fill",
+      "selector": "#txtLoginD",
+      "value_ref": "<USERNAME>"
+    },
+    {
+      "step_id": "submit_username",
+      "action": "click",
+      "selector": "button[type=submit].btn-ingresar, button[type=submit][aria-label*='Ingresar'], #lw_bel button[type=submit]"
+    },
+    {
+      "step_id": "wait_for_security_question",
+      "action": "wait_for_selector",
+      "selector": "#answer",
+      "state": "visible",
       "timeout_ms": 15000
     },
     {
-      "step_id": "login_fill_username",
-      "action": "fill",
-      "selector": "[id*='user'], [id*='usuario'], input[type='text']:first-of-type",
-      "value_ref": "personal:username",
-      "sensitive": false
+      "step_id": "answer_security_question_first_job_title",
+      "action": "prompt_user",
+      "selector": "#answer",
+      "question_selector": ".login-step label, .security-question-label, [class*='question'] label, [class*='pregunta'], .form-group label",
+      "field_key": "security_q_first_job_title",
+      "cache_answers": true,
+      "timeout_s": 240
     },
     {
-      "step_id": "login_fill_password",
-      "action": "fill",
-      "selector": "[id*='pass'], [id*='clave'], input[type='password']",
-      "value_ref": "personal:password",
-      "sensitive": true
-    },
-    {
-      "step_id": "login_submit",
+      "step_id": "submit_security_answer",
       "action": "click",
-      "selector": "button[type='submit'], input[type='submit'], [id*='login'], [id*='ingresar']"
+      "selector": "button[type=submit]"
     },
     {
-      "step_id": "dashboard_wait",
+      "step_id": "wait_for_password_field",
       "action": "wait_for_selector",
-      "selector": "[id*='account'], [class*='account'], [id*='cuenta'], [class*='cuenta']",
+      "selector": "input[type=password]",
+      "state": "visible",
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "fill_password",
+      "action": "fill",
+      "selector": "input[type=password]",
+      "value_ref": "<PASSWORD>"
+    },
+    {
+      "step_id": "submit_password",
+      "action": "click",
+      "selector": "#btn_enter"
+    },
+    {
+      "step_id": "wait_for_dashboard",
+      "action": "wait_for_selector",
+      "selector": "a[role=menuitem]",
+      "state": "visible",
       "timeout_ms": 20000
     },
     {
-      "step_id": "account_savings_navigate",
+      "step_id": "navigate_to_dashboard",
       "action": "navigate",
-      "url": "https://www.bfranchservice.bancogeneral.com/eBanking4/Accounts/Savings",
-      "wait_until": "networkidle"
+      "url": "https://zonasegura.bgeneral.com/group/guest/dashboard",
+      "wait_until": "domcontentloaded"
     },
     {
-      "step_id": "account_savings_select_date_range",
-      "action": "select_date_range",
-      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
-      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
-      "months_back": 6
+      "step_id": "open_account_context_menu",
+      "action": "click",
+      "selector": "[aria-expanded=false] span.account-menu-trigger, div[aria-expanded=false]",
+      "nth": 0
     },
     {
-      "step_id": "account_savings_download",
+      "step_id": "click_ver_movimientos",
+      "action": "click",
+      "selector": "a[href*='movimientos'], a[href*='detalle-de-cuenta']"
+    },
+    {
+      "step_id": "wait_for_transaction_history",
+      "action": "wait_for_selector",
+      "selector": "#tabMenu0",
+      "state": "visible",
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "click_ultimos_movimientos_tab",
+      "action": "click",
+      "selector": "#tabMenu0"
+    },
+    {
+      "step_id": "set_date_range_from",
+      "action": "fill",
+      "selector": "#dateOfTransaction0",
+      "value_ref": "<DATE_FROM>"
+    },
+    {
+      "step_id": "set_date_range_to",
+      "action": "fill",
+      "selector": "#dateOfTransaction1",
+      "value_ref": "<DATE_TO>"
+    },
+    {
+      "step_id": "search_transactions",
+      "action": "click",
+      "selector": "button[type=submit][role=button]"
+    },
+    {
+      "step_id": "wait_for_transactions_loaded",
+      "action": "wait_for_selector",
+      "selector": "label[aria-expanded]",
+      "state": "visible",
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "open_descargar_dropdown",
+      "action": "click",
+      "selector": "label[aria-expanded] em"
+    },
+    {
+      "step_id": "download_excel",
       "action": "download_file",
-      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
-      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    },
-    {
-      "step_id": "account_savings_wait_download",
-      "action": "wait_for_download",
-      "timeout_ms": 30000
-    },
-    {
-      "step_id": "account_checking_navigate",
-      "action": "navigate",
-      "url": "https://www.bfranchservice.bancogeneral.com/eBanking4/Accounts/Checking",
-      "wait_until": "networkidle"
-    },
-    {
-      "step_id": "account_checking_select_date_range",
-      "action": "select_date_range",
-      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
-      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
-      "months_back": 6
-    },
-    {
-      "step_id": "account_checking_download",
-      "action": "download_file",
-      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
-      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    },
-    {
-      "step_id": "account_checking_wait_download",
-      "action": "wait_for_download",
-      "timeout_ms": 30000
-    },
-    {
-      "step_id": "account_credit_card_navigate",
-      "action": "navigate",
-      "url": "https://www.bfranchservice.bancogeneral.com/eBanking4/Cards/CreditCard",
-      "wait_until": "networkidle"
-    },
-    {
-      "step_id": "account_credit_card_select_date_range",
-      "action": "select_date_range",
-      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
-      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
-      "months_back": 6
-    },
-    {
-      "step_id": "account_credit_card_download",
-      "action": "download_file",
-      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
-      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    },
-    {
-      "step_id": "account_credit_card_wait_download",
-      "action": "wait_for_download",
-      "timeout_ms": 30000
+      "trigger_selector": "a[href*='Excel'], .dropdown-menu a:nth-child(3)",
+      "expected_mime": "application/vnd.ms-excel",
+      "expected_extension": "xls"
     }
   ]
 }

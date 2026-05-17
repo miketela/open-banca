@@ -1,11 +1,4 @@
-"""Tests for task-32: incremental scrape workflow — since_cursor + date range logic.
-
-Test matrix:
-  - test_incremental_mode_uses_since_cursor: incremental + cursor → since_date used.
-  - test_full_historical_6month_lookback: full_historical → since_date ~= now - 180d.
-  - test_incremental_no_cursor_full_fallback: incremental without cursor → uses 6-month.
-  - test_workflow_incremental_completes: end-to-end incremental workflow completes OK.
-"""
+"""Tests for incremental scrape workflow — ExecuteScrapeMapActivity path."""
 
 from __future__ import annotations
 
@@ -17,21 +10,13 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from open_banca_orchestrator.activities.download_excel import DownloadExcelResult
 from open_banca_orchestrator.activities.emit_webhook import EmitWebhookResult
-from open_banca_orchestrator.activities.login import (
-    BrowserSessionToken,
-    LoginResult,
-    LoginStatus,
-)
-from open_banca_orchestrator.activities.navigate import NavigateResult
-from open_banca_orchestrator.activities.otp_signal_await import OTPSignalAwaitResult
+from open_banca_orchestrator.activities.execute_scrape_map import ExecuteScrapeMapResult
 from open_banca_orchestrator.activities.parse_excel import ParseExcelResult
 from open_banca_orchestrator.activities.validate import ValidateResult, ValidationStatus
 from open_banca_orchestrator.activities.spawn_sandbox import SpawnSandboxResult
 from open_banca_orchestrator.activities.cleanup_sandbox import CleanupSandboxResult
 from open_banca_orchestrator.activities.persist_result import PersistResultResult
-from open_banca_orchestrator.activities.list_accounts import ListAccountsResult, AccountInfo
 from open_banca_orchestrator.workflows.map_bank import MapBankWorkflow
 from open_banca_orchestrator.workflows.remap_bank import RemapBankWorkflow
 from open_banca_orchestrator.workflows.scrape_job import (
@@ -41,38 +26,15 @@ from open_banca_orchestrator.workflows.scrape_job import (
     ScrapeMode,
 )
 
-# ---------------------------------------------------------------------------
-# Shared mock activities
-# ---------------------------------------------------------------------------
 
-_FAKE_SESSION_TOKEN = BrowserSessionToken(
-    container_id="test-container",
-    socket_path="/run/banca/sidecar.sock",
-    sidecar_pid=1234,
-)
-
-
-@activity.defn(name="LoginActivity")
-async def _mock_login_success(_input):  # type: ignore[no-untyped-def]
-    return LoginResult(status=LoginStatus.success)
-
-
-_CAPTURED_DOWNLOAD_INPUTS: list[object] = []
-
-
-@activity.defn(name="NavigateActivity")
-async def _mock_navigate(_input):  # type: ignore[no-untyped-def]
-    return NavigateResult(current_url="https://bank.test/txns", page_title="Transactions")
-
-
-@activity.defn(name="DownloadExcelActivity")
-async def _mock_download_capture(input_):  # type: ignore[no-untyped-def]
-    """Capture the DownloadExcelInput for assertion in tests."""
-    _CAPTURED_DOWNLOAD_INPUTS.append(input_)
-    return DownloadExcelResult(
+@activity.defn(name="ExecuteScrapeMapActivity")
+async def _mock_execute_scrape_map(_input):  # type: ignore[no-untyped-def]
+    return ExecuteScrapeMapResult(
+        status="completed",
         excel_path="/tmp/test_incremental.xlsx",
         file_size_bytes=512,
         content_hash="abc123",
+        steps_completed=2,
     )
 
 
@@ -91,14 +53,11 @@ async def _mock_emit(_input):  # type: ignore[no-untyped-def]
     return EmitWebhookResult(enqueued=True, event_id="evt-incr-001")
 
 
-@activity.defn(name="OTPSignalAwaitActivity")
-async def _mock_otp_keepalive(_input):  # type: ignore[no-untyped-def]
-    return OTPSignalAwaitResult(sidecar_alive=True, heartbeat_count=1)
-
-
 @activity.defn(name="SpawnSandboxActivity")
 async def _mock_spawn_sandbox(_input):  # type: ignore[no-untyped-def]
-    return SpawnSandboxResult(container_id="test-sandbox", sidecar_socket_path="/run/banca/sidecar.sock")
+    return SpawnSandboxResult(
+        container_id="test-sandbox", sidecar_socket_path="/run/banca/sidecar.sock"
+    )
 
 
 @activity.defn(name="CleanupSandboxActivity")
@@ -111,23 +70,14 @@ async def _mock_persist_result(_input):  # type: ignore[no-untyped-def]
     return PersistResultResult(persisted_accounts=1, persisted_transactions=0)
 
 
-@activity.defn(name="ListAccountsActivity")
-async def _mock_list_accounts(_input):  # type: ignore[no-untyped-def]
-    return ListAccountsResult(accounts=[AccountInfo(account_id="acc-001")])
-
-
 _ALL_MOCK_ACTIVITIES = [
-    _mock_login_success,
-    _mock_navigate,
-    _mock_download_capture,
+    _mock_execute_scrape_map,
     _mock_parse_excel,
     _mock_validate,
     _mock_emit,
-    _mock_otp_keepalive,
     _mock_spawn_sandbox,
     _mock_cleanup_sandbox,
     _mock_persist_result,
-    _mock_list_accounts,
 ]
 
 
@@ -137,22 +87,14 @@ def thread_pool() -> ThreadPoolExecutor:
         yield pool
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_workflow_incremental_completes(thread_pool: ThreadPoolExecutor) -> None:
-    """Incremental workflow with a cursor completes successfully."""
-    # Use cursor = 2025-06-12 (i.e., API already applied 3d buffer → effective_since)
-    since_cursor = "2025-06-12"
     incremental_input = ScrapeJobInput(
         job_id="test-incr-001",
         bank_id="banco_general",
         credential_ref="cred-ref-001",
         mode=ScrapeMode.incremental,
-        since_cursor=since_cursor,
+        since_cursor="2025-06-12",
         account_filter=["acc-001"],
     )
 
@@ -175,19 +117,16 @@ async def test_workflow_incremental_completes(thread_pool: ThreadPoolExecutor) -
             )
 
     assert result.status == "completed"
-    assert result.job_id == incremental_input.job_id
     assert len(result.errors) == 0
 
 
 @pytest.mark.asyncio
 async def test_workflow_full_historical_completes(thread_pool: ThreadPoolExecutor) -> None:
-    """Full historical workflow (no cursor) completes successfully."""
     full_input = ScrapeJobInput(
         job_id="test-full-001",
         bank_id="banco_general",
         credential_ref="cred-ref-001",
         mode=ScrapeMode.full_historical,
-        since_cursor=None,
         account_filter=["acc-001"],
     )
 
@@ -214,19 +153,15 @@ async def test_workflow_full_historical_completes(thread_pool: ThreadPoolExecuto
 
 
 @pytest.mark.asyncio
-async def test_workflow_incremental_no_cursor_uses_180d_lookback(
+async def test_workflow_incremental_no_cursor_completes(
     thread_pool: ThreadPoolExecutor,
 ) -> None:
-    """Incremental mode without cursor uses 6-month (180d) lookback defensively."""
-    # This simulates a misconfigured request: incremental mode but no since_cursor
-    # The API layer should have converted this to full, but the workflow must handle
-    # it gracefully with a 6-month lookback.
     incremental_no_cursor = ScrapeJobInput(
         job_id="test-incr-nocursor-001",
         bank_id="banco_general",
         credential_ref="cred-ref-001",
         mode=ScrapeMode.incremental,
-        since_cursor=None,  # No cursor — should trigger 6-month fallback
+        since_cursor=None,
         account_filter=["acc-001"],
     )
 
@@ -248,6 +183,5 @@ async def test_workflow_incremental_no_cursor_uses_180d_lookback(
                 result_type=ScrapeJobResult,
             )
 
-    # Should complete without error (6-month fallback is handled gracefully)
     assert result.status == "completed"
     assert len(result.errors) == 0

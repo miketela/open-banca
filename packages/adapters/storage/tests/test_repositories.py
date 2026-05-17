@@ -136,6 +136,31 @@ def test_save_job_upserts_status(store):
     assert loaded.status == JobStatus.RUNNING
 
 
+def test_update_job_status(store):
+    job = _make_job(status=JobStatus.PENDING)
+    store.save_job(job)
+
+    store.update_job_status(job.id, JobStatus.HUMAN_INPUT_REQUIRED)
+    loaded = store.load_job(job.id)
+    assert loaded is not None
+    assert loaded.status == JobStatus.HUMAN_INPUT_REQUIRED
+
+    store.update_job_status(job.id, JobStatus.FAILED, error="timeout")
+    loaded = store.load_job(job.id)
+    assert loaded is not None
+    assert loaded.status == JobStatus.FAILED
+    assert loaded.error == "timeout"
+
+
+def test_human_input_answer_save_take_and_upsert(store):
+    store.save_human_input_answer("job-1", "security_q_1", "answer-a", persist=True)
+    assert store.take_human_input_answer("job-1", "security_q_1") == ("answer-a", True)
+    assert store.take_human_input_answer("job-1", "security_q_1") is None
+
+    store.save_human_input_answer("job-1", "security_q_1", "answer-b", persist=False)
+    assert store.take_human_input_answer("job-1", "security_q_1") == ("answer-b", False)
+
+
 # ── Decimal roundtrip tests ───────────────────────────────────────────────────
 
 

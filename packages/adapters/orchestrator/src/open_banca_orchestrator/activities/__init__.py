@@ -32,6 +32,11 @@ from open_banca_orchestrator.activities.download_excel import (
     DownloadExcelResult,
     download_excel,
 )
+from open_banca_orchestrator.activities.execute_scrape_map import (
+    ExecuteScrapeMapInput,
+    ExecuteScrapeMapResult,
+    execute_scrape_map,
+)
 from open_banca_orchestrator.activities.emit_webhook import (
     EmitWebhookActivity,
     EmitWebhookInput,
@@ -164,6 +169,10 @@ __all__ = [
     "RemapperAgentInput",
     "RemapperAgentResult",
     "remapper_agent",
+    # Execute scrape map
+    "ExecuteScrapeMapInput",
+    "ExecuteScrapeMapResult",
+    "execute_scrape_map",
     # Emit webhook
     "EmitWebhookActivity",
     "EmitWebhookInput",
