@@ -160,7 +160,10 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
 
         def on_human_input_required(required: HumanInputRequired) -> None:
             job_store.save_human_input_pending(
-                inp.job_id, required.field_key, required.question_hash
+                inp.job_id,
+                required.field_key,
+                required.question_hash,
+                question_text=required.question_text,
             )
             job_store.update_job_status(inp.job_id, JobStatus.HUMAN_INPUT_REQUIRED)
             if required.field_key not in webhook_emitted:
@@ -182,6 +185,7 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
             on_required=on_human_input_required,
         )
 
+        headless = os.environ.get("OPEN_BANCA_PLAYWRIGHT_HEADLESS", "1").strip() != "0"
         runner = ScraperRunner(
             job_id_provider=lambda: inp.job_id,
             secret_resolver=_make_secret_resolver(vault, inp.credential_ref),
@@ -191,6 +195,7 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
             heartbeat_fn=lambda: activity.heartbeat(
                 {"job_id": inp.job_id, "phase": "execute_map"}
             ),
+            headless=headless,
         )
 
         scrape = runner.execute_map(bank_map, credential)
@@ -208,6 +213,11 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
         vault.close()
 
     if scrape.breakage_events:
+        job_store.update_job_status(
+            inp.job_id,
+            JobStatus.FAILED,
+            error=scrape.breakage_events[0].error_class,
+        )
         return ExecuteScrapeMapResult(
             status="breakage",
             errors=[e.error_class for e in scrape.breakage_events],

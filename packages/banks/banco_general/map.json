@@ -41,22 +41,15 @@
       "step_id": "submit_username",
       "action": "click",
       "frame_selector": "#bel-desktop #inbank",
-      "selector": "button[type=submit].btn-ingresar, button[type=submit][aria-label*='Ingresar'], button[type=submit]"
-    },
-    {
-      "step_id": "wait_for_security_question",
-      "action": "wait_for_selector",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "#answer, input[type=password]",
-      "state": "attached",
-      "timeout_ms": 30000
+      "selector": "button.btningresar, button[type=submit]"
     },
     {
       "step_id": "answer_security_question_first_job_title",
       "action": "prompt_user",
       "frame_selector": "#bel-desktop #inbank",
       "selector": "#answer",
-      "question_selector": ".login-step label, .security-question-label, [class*='question'] label, [class*='pregunta'], .form-group label",
+      "question_selector": "label[for='answer'], .login-step label, .login-step p, [class*='pregunta']",
+      "question_wait_ms": 25000,
       "field_key": "security_q_first_job_title",
       "cache_answers": true,
       "timeout_s": 240

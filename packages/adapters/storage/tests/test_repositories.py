@@ -161,6 +161,20 @@ def test_human_input_answer_save_take_and_upsert(store):
     assert store.take_human_input_answer("job-1", "security_q_1") == ("answer-b", False)
 
 
+def test_pending_human_input_includes_question_text(store):
+    store.save_human_input_pending(
+        "job-2",
+        "security_q_pet",
+        "abc123",
+        question_text="¿Nombre de su mascota?",
+    )
+    pending = store.get_pending_human_input("job-2")
+    assert pending is not None
+    assert pending["field_key"] == "security_q_pet"
+    assert pending["question_text"] == "¿Nombre de su mascota?"
+    assert pending["question_hash"] == "abc123"
+
+
 # ── Decimal roundtrip tests ───────────────────────────────────────────────────
 
 

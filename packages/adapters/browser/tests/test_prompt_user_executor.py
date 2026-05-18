@@ -63,16 +63,23 @@ def _make_page(question_text: str = "¿Cuál es el color favorito de su madre?",
 
     question_locator = MagicMock()
     question_locator.count.return_value = 1 if selector_found else 0
-    question_locator.inner_text.return_value = question_text
+    question_locator.nth.return_value.inner_text.return_value = question_text
 
     answer_locator = MagicMock()
     answer_locator.count.return_value = 1 if selector_found else 0
+    answer_locator.first.wait_for = MagicMock()
+    answer_locator.first.evaluate = MagicMock(return_value=question_text)
     answer_locator.fill = MagicMock()
 
     def locator_side_effect(selector: str) -> MagicMock:
-        if "security-question" in selector or "question" in selector:
+        if selector == "#answer-input" or selector.startswith("#"):
+            if "answer" in selector:
+                return answer_locator
+        if "security-question" in selector or "question" in selector or "label" in selector:
             return question_locator
-        return answer_locator
+        empty = MagicMock()
+        empty.count.return_value = 0
+        return empty
 
     page.locator.side_effect = locator_side_effect
     return page

@@ -232,7 +232,6 @@ class ScrapeJobWorkflow:
                 sandbox_container_id=sandbox_container_id,
             ),
             start_to_close_timeout=datetime.timedelta(minutes=10),
-            heartbeat_timeout=datetime.timedelta(seconds=30),
             retry_policy=_RETRY_EXECUTE_MAP,
         )
 

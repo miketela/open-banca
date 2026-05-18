@@ -109,22 +109,51 @@ class SqliteJobStore:
         logger.debug("update_job_status: %s status=%s", job_id, status)
 
     def save_human_input_pending(
-        self, job_id: str, field_key: str, question_hash: str
+        self,
+        job_id: str,
+        field_key: str,
+        question_hash: str,
+        *,
+        question_text: str = "",
     ) -> None:
-        """Record question_hash when a prompt_user step pauses (answer not yet known)."""
+        """Record pending prompt_user pause (question known, answer not yet)."""
         self._conn.execute(
             """
             INSERT INTO human_input_answers (
-                job_id, field_key, answer, persist, question_hash, created_at
+                job_id, field_key, answer, persist, question_hash, question_text, created_at
             )
-            VALUES (?, ?, NULL, 1, ?, ?)
+            VALUES (?, ?, NULL, 1, ?, ?, ?)
             ON CONFLICT(job_id, field_key) DO UPDATE SET
                 question_hash = excluded.question_hash,
+                question_text = excluded.question_text,
                 created_at = excluded.created_at
             """,
-            (job_id, field_key, question_hash, _utcnow_iso()),
+            (job_id, field_key, question_hash, question_text or None, _utcnow_iso()),
         )
         self._conn.commit()
+
+    def get_pending_human_input(self, job_id: str) -> dict[str, str] | None:
+        """Return pending human-input metadata for operator UX."""
+        row = self._conn.execute(
+            """
+            SELECT field_key, question_text, question_hash
+            FROM human_input_answers
+            WHERE job_id = ? AND answer IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        field_key, question_text, question_hash = row[0], row[1], row[2]
+        if not field_key:
+            return None
+        return {
+            "field_key": str(field_key),
+            "question_text": str(question_text or ""),
+            "question_hash": str(question_hash or ""),
+        }
 
     def save_human_input_answer(
         self,

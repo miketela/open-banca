@@ -52,7 +52,7 @@ async def get_job(
     except Exception as exc:
         logger.warning("Could not query Temporal status for job %s: %s", job_id, exc)
 
-    return {
+    payload: dict[str, Any] = {
         "job_id": job.id,
         "status": str(job.status),
         "bank": job.bank,
@@ -63,6 +63,13 @@ async def get_job(
         "error": job.error,
         "temporal_status": temporal_status,
     }
+    from open_banca_domain.entities.job import JobStatus
+
+    if job.status == JobStatus.HUMAN_INPUT_REQUIRED:
+        pending = job_store.get_pending_human_input(job_id)  # type: ignore[attr-defined]
+        if pending is not None:
+            payload["pending_human_input"] = pending
+    return payload
 
 
 @router.get(

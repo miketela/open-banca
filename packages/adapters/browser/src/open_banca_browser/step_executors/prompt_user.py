@@ -65,6 +65,83 @@ def _normalize_question(text: str) -> str:
     return " ".join(text.split())
 
 
+_DEFAULT_QUESTION_FALLBACKS = (
+    "label[for='answer']",
+    "label[for=answer]",
+    "#answer ~ label",
+    "#answer ~ p",
+    "#answer ~ span",
+    ".login-step label",
+    ".login-step p",
+    "[class*='pregunta']",
+    "[class*='question']",
+    "legend",
+)
+
+
+def _split_selectors(raw: str) -> list[str]:
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _wait_for_answer_field(root: Any, answer_selector: str, timeout_ms: int) -> None:
+    loc = root.locator(answer_selector).first
+    loc.wait_for(state="attached", timeout=timeout_ms)
+
+
+def _extract_from_answer_context(root: Any, answer_selector: str) -> str | None:
+    loc = root.locator(answer_selector)
+    if loc.count() == 0:
+        return None
+    text: str = loc.first.evaluate(
+        """(el) => {
+        const byFor = el.id
+            ? document.querySelector("label[for='" + el.id + "']")
+            : null;
+        if (byFor && byFor.innerText.trim().length > 3) return byFor.innerText.trim();
+        const block = el.closest(".login-step") || el.closest("form") || el.parentElement;
+        if (!block) return "";
+        const clone = block.cloneNode(true);
+        clone.querySelectorAll("input,button,select,textarea").forEach((n) => n.remove());
+        return (clone.innerText || "").trim();
+    }"""
+    )
+    text = text.strip()
+    return text if len(text) >= 5 else None
+
+
+def extract_question_text(
+    root: Any,
+    *,
+    question_selector: str,
+    answer_selector: str,
+    question_wait_ms: int = 20_000,
+    question_fallback_selectors: tuple[str, ...] = _DEFAULT_QUESTION_FALLBACKS,
+) -> str:
+    """Wait for the answer field, then resolve visible question copy from the DOM."""
+    _wait_for_answer_field(root, answer_selector, question_wait_ms)
+
+    for sel in _split_selectors(question_selector) + list(question_fallback_selectors):
+        loc = root.locator(sel)
+        count = loc.count()
+        if count == 0:
+            continue
+        for idx in range(min(count, 5)):
+            try:
+                text = loc.nth(idx).inner_text(timeout=3_000).strip()
+            except Exception:
+                continue
+            if len(text) >= 5:
+                return text
+
+    from_context = _extract_from_answer_context(root, answer_selector)
+    if from_context:
+        return from_context
+
+    raise SelectorNotFound(
+        f"prompt_user: could not extract question text near {answer_selector!r}"
+    )
+
+
 def compute_question_hash(bank_id: str, credential_id: str, field_key: str, question_text: str) -> str:
     """Compute the SHA-256 cache key for a security question.
 
@@ -116,22 +193,25 @@ def execute_prompt_user(
         raise SelectorNotFound(f"prompt_user step {step.step_id!r}: missing selector")
 
     root = root_locator(page, step)
+    question_wait_ms = int(params.get("question_wait_ms", 20_000))
 
-    # 1. Extract question text from DOM
+    # 1. Wait for answer field, then extract question text from DOM
     try:
-        locator = root.locator(question_selector)
-        if locator.count() == 0:
-            raise SelectorNotFound(
-                f"prompt_user: question_selector not found: {question_selector!r}"
-            )
-        question_text: str = locator.inner_text(timeout=5_000).strip()
+        question_text = extract_question_text(
+            root,
+            question_selector=question_selector,
+            answer_selector=answer_selector,
+            question_wait_ms=question_wait_ms,
+        )
     except SelectorNotFound:
         raise
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
-            raise StepTimeout(f"prompt_user: timeout reading question_selector {question_selector!r}") from exc
-        raise SelectorNotFound(f"prompt_user: error reading question_selector: {exc}") from exc
+            raise StepTimeout(
+                f"prompt_user: timeout waiting for answer field {answer_selector!r}"
+            ) from exc
+        raise SelectorNotFound(f"prompt_user: error extracting question: {exc}") from exc
 
     # 2. Compute cache key hash
     question_hash = compute_question_hash(bank_id, credential_id, field_key, question_text)
