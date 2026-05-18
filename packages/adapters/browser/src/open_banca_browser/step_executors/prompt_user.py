@@ -65,18 +65,65 @@ def _normalize_question(text: str) -> str:
     return " ".join(text.split())
 
 
+# Labels/copy that are NOT the security question (input hints, buttons, headers).
+_GENERIC_QUESTION_PHRASES = frozenset(
+    {
+        "respuesta",
+        "answer",
+        "tu respuesta",
+        "your answer",
+        "validar",
+        "ingresar en banca en línea",
+        "ingresar en banca en linea",
+        "abrir página web",
+        "abrir pagina web",
+        "¿la olvidaste?",
+        "la olvidaste",
+    }
+)
+
 _DEFAULT_QUESTION_FALLBACKS = (
-    "label[for='answer']",
-    "label[for=answer]",
-    "#answer ~ label",
-    "#answer ~ p",
-    "#answer ~ span",
-    ".login-step label",
-    ".login-step p",
+    "p:has-text('?')",
     "[class*='pregunta']",
     "[class*='question']",
+    ".login-step p",
+    "#answer ~ p",
     "legend",
 )
+
+
+def _is_valid_question_text(text: str) -> bool:
+    """Reject input labels and short chrome; keep real question sentences."""
+    cleaned = " ".join(text.split()).strip()
+    if len(cleaned) < 12:
+        return False
+    lower = cleaned.lower()
+    if lower in _GENERIC_QUESTION_PHRASES:
+        return False
+    # Single-word field labels
+    if " " not in cleaned and "?" not in cleaned and "¿" not in cleaned:
+        return False
+    return True
+
+
+def _score_question_candidate(text: str) -> int:
+    if not _is_valid_question_text(text):
+        return -1
+    score = len(text)
+    if "?" in text or "¿" in text:
+        score += 500
+    return score
+
+
+def _pick_best_question(candidates: list[str]) -> str | None:
+    best_text: str | None = None
+    best_score = -1
+    for text in candidates:
+        score = _score_question_candidate(text)
+        if score > best_score:
+            best_score = score
+            best_text = text.strip()
+    return best_text
 
 
 def _split_selectors(raw: str) -> list[str]:
@@ -88,25 +135,22 @@ def _wait_for_answer_field(root: Any, answer_selector: str, timeout_ms: int) -> 
     loc.wait_for(state="attached", timeout=timeout_ms)
 
 
-def _extract_from_answer_context(root: Any, answer_selector: str) -> str | None:
+def _extract_from_answer_context(root: Any, answer_selector: str) -> list[str]:
+    """Parse lines of text near the answer field (excludes input chrome)."""
     loc = root.locator(answer_selector)
     if loc.count() == 0:
-        return None
-    text: str = loc.first.evaluate(
+        return []
+    raw: str = loc.first.evaluate(
         """(el) => {
-        const byFor = el.id
-            ? document.querySelector("label[for='" + el.id + "']")
-            : null;
-        if (byFor && byFor.innerText.trim().length > 3) return byFor.innerText.trim();
-        const block = el.closest(".login-step") || el.closest("form") || el.parentElement;
+        const block = el.closest("form") || el.closest("main") || el.closest("[role='main']")
+            || document.body;
         if (!block) return "";
         const clone = block.cloneNode(true);
-        clone.querySelectorAll("input,button,select,textarea").forEach((n) => n.remove());
+        clone.querySelectorAll("input,button,select,textarea,label").forEach((n) => n.remove());
         return (clone.innerText || "").trim();
     }"""
     )
-    text = text.strip()
-    return text if len(text) >= 5 else None
+    return [ln.strip() for ln in raw.splitlines() if ln.strip()]
 
 
 def extract_question_text(
@@ -120,22 +164,25 @@ def extract_question_text(
     """Wait for the answer field, then resolve visible question copy from the DOM."""
     _wait_for_answer_field(root, answer_selector, question_wait_ms)
 
+    candidates: list[str] = []
     for sel in _split_selectors(question_selector) + list(question_fallback_selectors):
         loc = root.locator(sel)
         count = loc.count()
         if count == 0:
             continue
-        for idx in range(min(count, 5)):
+        for idx in range(min(count, 8)):
             try:
                 text = loc.nth(idx).inner_text(timeout=3_000).strip()
             except Exception:
                 continue
-            if len(text) >= 5:
-                return text
+            if text:
+                candidates.append(text)
 
-    from_context = _extract_from_answer_context(root, answer_selector)
-    if from_context:
-        return from_context
+    candidates.extend(_extract_from_answer_context(root, answer_selector))
+
+    best = _pick_best_question(candidates)
+    if best:
+        return best
 
     raise SelectorNotFound(
         f"prompt_user: could not extract question text near {answer_selector!r}"

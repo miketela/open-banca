@@ -26,6 +26,7 @@ def _make_fill_step(
     selector: str = "#password",
     value_ref: str = "cred:bank_password",
     sensitive: bool = True,
+    **extra: object,
 ) -> StepSpec:
     return StepSpec(
         step_id="step-fill-1",
@@ -34,6 +35,7 @@ def _make_fill_step(
         selector=selector,
         value_ref=value_ref,
         sensitive=sensitive,
+        **extra,
     )
 
 
@@ -51,6 +53,14 @@ def test_fill_writes_plaintext_to_input(mock_page: MagicMock) -> None:
     step = _make_fill_step()
     execute_fill(mock_page, step, secret_resolver=resolver)
     mock_page.locator.return_value.fill.assert_called_once_with("mypassword", timeout=10_000)
+
+
+def test_fill_trigger_blur_presses_tab(mock_page: MagicMock) -> None:
+    """trigger_blur=True sends Tab after fill for Angular validation."""
+    resolver = MagicMock(return_value="myuser")
+    step = _make_fill_step(trigger_blur=True)
+    execute_fill(mock_page, step, secret_resolver=resolver)
+    mock_page.locator.return_value.press.assert_called_once_with("Tab")
 
 
 def test_fill_sensitive_marks_field(mock_page: MagicMock) -> None:

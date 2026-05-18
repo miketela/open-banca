@@ -6,34 +6,48 @@ from unittest.mock import MagicMock
 import pytest
 
 from open_banca_browser.errors import SelectorNotFound
-from open_banca_browser.step_executors.prompt_user import extract_question_text
+from open_banca_browser.step_executors.prompt_user import (
+    _pick_best_question,
+    extract_question_text,
+)
 
 
-def test_extract_prefers_first_matching_selector() -> None:
+def test_pick_best_rejects_respuesta_label() -> None:
+    best = _pick_best_question(
+        [
+            "Respuesta",
+            "¿Cuál es el apodo de tu abuelo paterno?",
+            "Validar",
+        ]
+    )
+    assert best == "¿Cuál es el apodo de tu abuelo paterno?"
+
+
+def test_extract_prefers_question_with_mark() -> None:
     root = MagicMock()
     answer = MagicMock()
     answer.count.return_value = 1
     answer.first.wait_for = MagicMock()
 
-    label = MagicMock()
-    label.count.return_value = 1
-    label.nth.return_value.inner_text.return_value = "¿Cuál es su primer empleo?"
+    question_p = MagicMock()
+    question_p.count.return_value = 1
+    question_p.nth.return_value.inner_text.return_value = "¿Cuál es su primer empleo?"
 
     def locator(sel: str) -> MagicMock:
         if sel == "#answer":
             return answer
-        if "label" in sel:
-            return label
+        if "?" in sel or "pregunta" in sel:
+            return question_p
         empty = MagicMock()
         empty.count.return_value = 0
         return empty
 
     root.locator.side_effect = locator
-    answer.first.evaluate = MagicMock()
+    answer.first.evaluate = MagicMock(return_value="")
 
     text = extract_question_text(
         root,
-        question_selector="label[for='answer']",
+        question_selector="p:has-text('?')",
         answer_selector="#answer",
         question_wait_ms=1000,
     )

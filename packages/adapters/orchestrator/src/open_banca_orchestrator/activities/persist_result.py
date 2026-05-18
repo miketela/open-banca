@@ -70,7 +70,7 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:  # n
     from open_banca_storage.migrations import ensure_schema  # noqa: PLC0415
     from open_banca_storage.repositories.job_store import SqliteJobStore  # noqa: PLC0415
 
-    passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "")
+    passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "dev-insecure-passphrase")
     settings = get_storage_settings()
     conn = Connection(db_path=settings.db_path, passphrase=passphrase)
     ensure_schema(conn)

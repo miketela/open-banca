@@ -62,19 +62,27 @@ def _load_bank_map(bank_id: str):
 
 
 def _open_storage():
-    from open_banca_storage import Argon2idKeyDerivation, ConnectionPool, SecretVault, migrate  # noqa: PLC0415
+    from open_banca_storage import ConnectionPool, SecretVault, migrate  # noqa: PLC0415
     from open_banca_storage.config import get_settings as get_storage_settings  # noqa: PLC0415
     from open_banca_storage.repositories.job_store import SqliteJobStore  # noqa: PLC0415
 
-    passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "")
+    # Must match API default in open_banca_api.dependencies.get_storage_connection
+    passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "dev-insecure-passphrase")
     settings = get_storage_settings()
     db_path = Path(
         os.environ.get("OPEN_BANCA_DB_PATH", str(settings.open_banca_db_path))
     )
+    # Mirror API KDF selection: Argon2id when available, Passthrough otherwise.
+    try:
+        from open_banca_storage.kdf import Argon2idKeyDerivation  # noqa: PLC0415
+        kdf = Argon2idKeyDerivation()
+    except Exception:
+        from open_banca_storage.connection import PassthroughKeyDerivation  # noqa: PLC0415
+        kdf = PassthroughKeyDerivation()  # type: ignore[assignment]
     pool = ConnectionPool(
         db_path=db_path,
         passphrase=passphrase,
-        key_derivation=Argon2idKeyDerivation(),
+        key_derivation=kdf,
     )
     conn = pool.get()
     migrate(conn)

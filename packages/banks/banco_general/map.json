@@ -35,21 +35,34 @@
       "action": "fill",
       "frame_selector": "#bel-desktop #inbank",
       "selector": "#txtLoginD",
-      "value_ref": "<USERNAME>"
+      "value_ref": "<USERNAME>",
+      "trigger_blur": true
     },
     {
       "step_id": "submit_username",
       "action": "click",
       "frame_selector": "#bel-desktop #inbank",
-      "selector": "button.btningresar, button[type=submit]"
+      "selector": "button.btningresar"
+    },
+    {
+      "step_id": "navigate_zonasegura_portal",
+      "action": "navigate",
+      "url": "https://zonasegura.bgeneral.com/web/guest/home#!/login/username?username=<USERNAME>",
+      "wait_until": "domcontentloaded"
+    },
+    {
+      "step_id": "wait_for_security_question_page",
+      "action": "wait_for_selector",
+      "selector": "#answer",
+      "state": "attached",
+      "timeout_ms": 20000
     },
     {
       "step_id": "answer_security_question_first_job_title",
       "action": "prompt_user",
-      "frame_selector": "#bel-desktop #inbank",
       "selector": "#answer",
-      "question_selector": "label[for='answer'], .login-step label, .login-step p, [class*='pregunta']",
-      "question_wait_ms": 25000,
+      "question_selector": "p:has-text('?'), [class*='pregunta'], [class*='question']",
+      "question_wait_ms": 15000,
       "field_key": "security_q_first_job_title",
       "cache_answers": true,
       "timeout_s": 240
@@ -57,13 +70,11 @@
     {
       "step_id": "submit_security_answer",
       "action": "click",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "button[type=submit]"
+      "selector": "button:has-text('Validar'), button[type=submit]"
     },
     {
       "step_id": "wait_for_password_field",
       "action": "wait_for_selector",
-      "frame_selector": "#bel-desktop #inbank",
       "selector": "input[type=password]",
       "state": "visible",
       "timeout_ms": 15000
@@ -71,15 +82,14 @@
     {
       "step_id": "fill_password",
       "action": "fill",
-      "frame_selector": "#bel-desktop #inbank",
       "selector": "input[type=password]",
-      "value_ref": "<PASSWORD>"
+      "value_ref": "<PASSWORD>",
+      "trigger_blur": true
     },
     {
       "step_id": "submit_password",
       "action": "click",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "#btn_enter"
+      "selector": "button:has-text('Validar'), button[type=submit], #btn_enter"
     },
     {
       "step_id": "wait_for_dashboard",

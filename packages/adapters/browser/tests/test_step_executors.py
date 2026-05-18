@@ -69,6 +69,22 @@ class TestNavigate:
         step = _step(url="https://example.com")
         execute_navigate(page, step)  # no exception
 
+    def test_resolves_username_placeholder_in_url(self) -> None:
+        page = MagicMock()
+        page.goto.return_value = None
+        step = _step(
+            url="https://zonasegura.bgeneral.com/login?username=<USERNAME>",
+        )
+        execute_navigate(
+            page,
+            step,
+            secret_resolver=lambda ref: "user123" if ref == "<USERNAME>" else ref,
+        )
+        page.goto.assert_called_once()
+        called_url = page.goto.call_args[0][0]
+        assert "user123" in called_url
+        assert "<USERNAME>" not in called_url
+
 
 # ─────────────────────────────── click ───────────────────────────────────────
 

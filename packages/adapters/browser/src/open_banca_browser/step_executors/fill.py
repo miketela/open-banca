@@ -25,6 +25,8 @@ def execute_fill(
         value_ref (str): Key to resolve via secret_resolver (never logged).
         sensitive (bool): If True, mark the field as data-sensitive before fill
                           so that the screenshot redactor blanks it.
+        trigger_blur (bool): If True, press Tab after fill so Angular marks the field touched/valid.
+        type_slow (bool): If True, use press_sequentially instead of fill (human-like typing).
 
     Raises:
         ValueNotResolved: value_ref could not be resolved.
@@ -35,6 +37,8 @@ def execute_fill(
     selector: str = params.get("selector", "")
     value_ref: str = params.get("value_ref", "")
     sensitive: bool = params.get("sensitive", False)
+    trigger_blur: bool = bool(params.get("trigger_blur", False))
+    type_slow: bool = bool(params.get("type_slow", False))
 
     # Resolve secret — never log the plaintext
     try:
@@ -66,7 +70,13 @@ def execute_fill(
         count = locator.count()
         if count == 0:
             raise SelectorNotFound(f"fill: selector not found: {selector!r}")
-        locator.fill(plaintext, timeout=10_000)
+        if type_slow:
+            locator.click(timeout=5_000)
+            locator.press_sequentially(plaintext, delay=40)
+        else:
+            locator.fill(plaintext, timeout=10_000)
+        if trigger_blur:
+            locator.press("Tab")
     except SelectorNotFound:
         raise
     except Exception as exc:

@@ -1,6 +1,7 @@
 """navigate step executor."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from open_banca_browser.errors import HTTPError, StepTimeout
@@ -8,7 +9,22 @@ from open_banca_browser.step_executors._utils import extra
 from open_banca_domain.entities.bank_map import StepSpec
 
 
-def execute_navigate(page: Any, step: StepSpec) -> None:
+def _resolve_url(url: str, secret_resolver: Callable[[str], str] | None) -> str:
+    if secret_resolver is None or "<" not in url:
+        return url
+    resolved = url
+    for placeholder in ("<USERNAME>", "<PASSWORD>", "<DATE_FROM>", "<DATE_TO>"):
+        if placeholder in resolved:
+            resolved = resolved.replace(placeholder, secret_resolver(placeholder))
+    return resolved
+
+
+def execute_navigate(
+    page: Any,
+    step: StepSpec,
+    *,
+    secret_resolver: Callable[[str], str] | None = None,
+) -> None:
     """Navigate to a URL, waiting for the specified load state.
 
     StepSpec extra fields:
@@ -20,7 +36,7 @@ def execute_navigate(page: Any, step: StepSpec) -> None:
         HTTPError: Server returned 4xx/5xx.
     """
     params = extra(step)
-    url: str = params.get("url", "")
+    url: str = _resolve_url(params.get("url", ""), secret_resolver)
     wait_until: str = params.get("wait_until", "load")
 
     try:
