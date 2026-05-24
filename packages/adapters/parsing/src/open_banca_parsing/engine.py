@@ -411,7 +411,25 @@ class ExcelParser:
         if date_val.tzinfo is None:
             date_val = date_val.replace(tzinfo=UTC)
 
-        # Normalise amount
+        # Normalise amount — derive from debit/credit columns when amount absent (BG convention)
+        if amount_val is None:
+            debit_val = row_record.get("amount_debit")
+            credit_val = row_record.get("amount_credit")
+            if debit_val is not None or credit_val is not None:
+                from open_banca_parsing.dsl.helpers import normalize_amount as _na
+
+                debit = (
+                    debit_val
+                    if isinstance(debit_val, Decimal)
+                    else _na(str(debit_val if debit_val is not None else "0"))
+                )
+                credit = (
+                    credit_val
+                    if isinstance(credit_val, Decimal)
+                    else _na(str(credit_val if credit_val is not None else "0"))
+                )
+                amount_val = credit - debit
+
         if amount_val is None:
             return None
         if not isinstance(amount_val, Decimal):

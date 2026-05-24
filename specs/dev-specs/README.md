@@ -44,9 +44,9 @@ Checklist explícito de cierre.
 
 | HU | Título | Issue | Estado | Depende de |
 |----|--------|-------|--------|------------|
-| HU01 | Mapper en vivo a Banco General + HAR fixture | [#7](https://github.com/miketela/open-banca/issues/7) | draft | plan-fase:F0-F2 |
-| HU02 | Deploy local docker-compose con `.env` real | [#8](https://github.com/miketela/open-banca/issues/8) | draft | HU01 |
-| HU03 | Smoke E2E real Banco General | [#9](https://github.com/miketela/open-banca/issues/9) | draft | HU02 |
+| HU01 | Mapper en vivo a Banco General + HAR fixture | [#7](https://github.com/miketela/open-banca/issues/7) | in-progress | plan-fase:F0-F2 |
+| HU02 | Deploy local docker-compose con `.env` real | [#8](https://github.com/miketela/open-banca/issues/8) | in-progress | HU01 |
+| HU03 | Smoke E2E real Banco General | [#9](https://github.com/miketela/open-banca/issues/9) | pending (OTP live) | HU02 |
 | HU04 | USER-TEST 1: Foundation review | [#10](https://github.com/miketela/open-banca/issues/10) | draft | taskmaster:7 |
 | HU05 | USER-TEST 2: Scraper runner E2E | [#11](https://github.com/miketela/open-banca/issues/11) | draft | taskmaster:12 |
 | HU06 | USER-TEST 3: Banco General piloto | [#12](https://github.com/miketela/open-banca/issues/12) | draft | HU03 |

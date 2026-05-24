@@ -31,7 +31,11 @@ class ExecuteScrapeMapInput(BaseModel):
     credential_ref: str
     sandbox_container_id: str | None = Field(
         default=None,
-        description="Reserved for future sandbox browser routing",
+        description="Docker container ID from SpawnSandboxActivity; routes Playwright via CDP when set",
+    )
+    sandbox_container_ip: str | None = Field(
+        default=None,
+        description="Container IP on the per-job sandbox network (for CDP routing)",
     )
 
 
@@ -49,16 +53,63 @@ class ExecuteScrapeMapResult(BaseModel):
 
 def _load_bank_map(bank_id: str):
     from open_banca_domain.entities.bank_map import BankMap  # noqa: PLC0415
+    from open_banca_parsing.community.verifier import MapVerifier  # noqa: PLC0415
 
-    map_path = _BANKS_DIR / bank_id / "map.json"
+    bank_dir = _BANKS_DIR / bank_id
+    map_path = bank_dir / "map.json"
     if not map_path.exists():
         raise ApplicationError(
             f"map.json not found for bank_id={bank_id!r}",
             non_retryable=True,
             type="map_not_found",
         )
+
+    verify_result = MapVerifier().verify(bank_dir)
+    if not verify_result.ok:
+        error_type = "unsigned_map" if verify_result.error_detail else "map_verify_failed"
+        detail = verify_result.error_detail or "; ".join(verify_result.lint_errors)
+        raise ApplicationError(
+            f"Map verification failed for bank_id={bank_id!r}: {detail}",
+            non_retryable=True,
+            type=error_type,
+        )
+
     data = json.loads(map_path.read_text(encoding="utf-8"))
     return BankMap.model_validate(data)
+
+
+def _sandbox_skip_active() -> bool:
+    return os.environ.get("OPEN_BANCA_SKIP_SANDBOX", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _resolve_sandbox_cdp_url(
+    container_id: str | None,
+    container_ip: str | None,
+) -> str | None:
+    """Return Playwright CDP endpoint when scrape should run inside the sandbox."""
+    if not container_id or container_id.startswith("local-skip-"):
+        return None
+
+    explicit = os.environ.get("OPEN_BANCA_SANDBOX_CDP_URL", "").strip()
+    if explicit:
+        return explicit.format(
+            container_id=container_id,
+            container_ip=container_ip or "",
+        )
+
+    if container_ip:
+        port = os.environ.get("OPEN_BANCA_SANDBOX_CDP_PORT", "9222").strip()
+        return f"http://{container_ip}:{port}"
+
+    logger.warning(
+        "sandbox_container_id=%s set but no CDP URL/IP — falling back to host browser",
+        container_id,
+    )
+    return None
 
 
 def _open_storage():
@@ -194,6 +245,24 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
         )
 
         headless = os.environ.get("OPEN_BANCA_PLAYWRIGHT_HEADLESS", "1").strip() != "0"
+        cdp_url = _resolve_sandbox_cdp_url(inp.sandbox_container_id, inp.sandbox_container_ip)
+        if cdp_url:
+            logger.info(
+                "execute_scrape_map: routing Playwright to sandbox CDP job_id=%s cdp=%s",
+                inp.job_id,
+                cdp_url,
+            )
+        elif inp.sandbox_container_id and not inp.sandbox_container_id.startswith("local-skip-"):
+            logger.warning(
+                "execute_scrape_map: sandbox spawned but CDP unavailable — host browser job_id=%s",
+                inp.job_id,
+            )
+        elif _sandbox_skip_active():
+            logger.warning(
+                "execute_scrape_map: OPEN_BANCA_SKIP_SANDBOX=1 — host browser (dev only) job_id=%s",
+                inp.job_id,
+            )
+
         runner = ScraperRunner(
             job_id_provider=lambda: inp.job_id,
             secret_resolver=_make_secret_resolver(vault, inp.credential_ref),
@@ -204,6 +273,7 @@ def _run_scraper_sync(inp: ExecuteScrapeMapInput) -> ExecuteScrapeMapResult:
                 {"job_id": inp.job_id, "phase": "execute_map"}
             ),
             headless=headless,
+            cdp_url=cdp_url,
         )
 
         scrape = runner.execute_map(bank_map, credential)

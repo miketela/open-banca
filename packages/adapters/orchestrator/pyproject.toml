@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2",
     "open-banca-domain",
     "open-banca-llm",
+    "open-banca-parsing",
     "open-banca-webhooks",
     "open-banca-observability",
 ]
@@ -30,6 +31,7 @@ packages = ["src/open_banca_orchestrator"]
 [tool.uv.sources]
 open-banca-domain = { workspace = true }
 open-banca-llm = { workspace = true }
+open-banca-parsing = { workspace = true }
 open-banca-webhooks = { workspace = true }
 open-banca-observability = { workspace = true }
 

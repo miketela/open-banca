@@ -410,6 +410,8 @@ def test_network_allowlist_labels(mock_router: respx.MockRouter, runner: DockerS
     allowed_domains_label = labels.get("com.open-banca.allowed-domains", "")
     assert "bancogeneral.com" in allowed_domains_label
     assert "www.bancogeneral.com" in allowed_domains_label
+    assert "api.anthropic.com" in allowed_domains_label
+    assert "api.deepseek.com" in allowed_domains_label
 
 
 def test_network_is_internal(mock_router: respx.MockRouter, runner: DockerSandboxRunner) -> None:
@@ -460,8 +462,55 @@ def test_ipc_none(mock_router: respx.MockRouter, runner: DockerSandboxRunner) ->
     assert captured["HostConfig"]["IpcMode"] == "none"
 
 
-# ===========================================================================
-# Kill lifecycle
+def test_attach_network_policy_rejects_unknown_domain(
+    mock_router: respx.MockRouter, runner: DockerSandboxRunner
+) -> None:
+    """attach_network_policy raises when domain is outside bank allowlist."""
+    from open_banca_domain.ports.sandbox_port import SandboxToken
+    from open_banca_sandbox.exceptions import NetworkPolicyViolation
+
+    network_name = f"sandbox-{_JOB_ID}"
+    inspect_payload = {
+        "Id": _CONTAINER_ID,
+        "Config": {"Labels": {"com.open-banca.bank-id": _BANK_ID}},
+        "NetworkSettings": {"Networks": {network_name: {"IPAddress": "172.20.0.2"}}},
+    }
+    mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
+        return_value=httpx.Response(200, json=inspect_payload)
+    )
+    token = SandboxToken(
+        container_id=_CONTAINER_ID,
+        container_ip="172.20.0.2",
+        network_name=network_name,
+    )
+    with pytest.raises(NetworkPolicyViolation, match="not in bank allowlist"):
+        runner.attach_network_policy(token, ["evil.example.com"])
+
+
+def test_attach_network_policy_accepts_bank_and_llm_domains(
+    mock_router: respx.MockRouter, runner: DockerSandboxRunner
+) -> None:
+    """attach_network_policy accepts full bank+LLM allowlist."""
+    from open_banca_domain.ports.sandbox_port import SandboxToken
+    from open_banca_sandbox.network import domains_for_bank
+
+    network_name = f"sandbox-{_JOB_ID}"
+    inspect_payload = {
+        "Id": _CONTAINER_ID,
+        "Config": {"Labels": {"com.open-banca.bank-id": _BANK_ID}},
+        "NetworkSettings": {"Networks": {network_name: {"IPAddress": "172.20.0.2"}}},
+    }
+    mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
+        return_value=httpx.Response(200, json=inspect_payload)
+    )
+    token = SandboxToken(
+        container_id=_CONTAINER_ID,
+        container_ip="172.20.0.2",
+        network_name=network_name,
+    )
+    runner.attach_network_policy(token, domains_for_bank(_BANK_ID, include_llm=True))
+
+
 # ===========================================================================
 
 

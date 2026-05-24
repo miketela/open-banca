@@ -85,6 +85,9 @@ class _NullTemporalAdapter:
     async def async_query_status(self, job_id: str) -> str:
         return "unknown"
 
+    async def async_check_readiness(self) -> bool:
+        return False
+
     def start_job(self, bank: str, credential_ref: str, mode: str) -> str:
         return "fake-job-id"
 

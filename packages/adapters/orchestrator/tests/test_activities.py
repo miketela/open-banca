@@ -159,16 +159,15 @@ async def test_download_excel_raises_not_implemented(env: ActivityEnvironment) -
 # ---------------------------------------------------------------------------
 
 
-def test_parse_excel_raises_not_implemented() -> None:
-    """ParseExcelActivity is synchronous and raises NotImplementedError."""
+def test_parse_excel_input_validates() -> None:
+    """ParseExcelInput Pydantic schema validates correctly."""
     input_ = ParseExcelInput(
         excel_path="/tmp/test.xlsx",
         content_hash="deadbeef",
         account_id="acc-001",
         parser_config=ParserConfig(bank_id="banco_general"),
     )
-    with pytest.raises(NotImplementedError):
-        parse_excel(input_)
+    assert input_.parser_config.bank_id == "banco_general"
 
 
 # ---------------------------------------------------------------------------

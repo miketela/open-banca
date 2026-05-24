@@ -273,3 +273,78 @@ class TestEngineFixture:
         config = _make_parser_config()
         txns = parser.parse(xlsx, config)
         assert txns == []
+
+
+class TestEngineDebitCredit:
+    def _make_debit_credit_config(self) -> ParserConfig:
+        return _make_parser_config(
+            sheets=[
+                {
+                    "name_pattern": "^Movimientos$",
+                    "header_row": 1,
+                    "data_start_row": 2,
+                    "column_map": [
+                        {
+                            "target_field": "date",
+                            "source": "Fecha",
+                            "transformations": [{"helper": "parse_date", "format": "%d/%m/%Y"}],
+                        },
+                        {
+                            "target_field": "description",
+                            "source": "Descripcion",
+                            "transformations": [{"helper": "trim"}],
+                        },
+                        {
+                            "target_field": "amount_debit",
+                            "source": "Debito",
+                            "required": False,
+                            "on_missing": "default",
+                            "default_value": "0",
+                            "transformations": [{"helper": "normalize_amount", "locale": "en_US"}],
+                        },
+                        {
+                            "target_field": "amount_credit",
+                            "source": "Credito",
+                            "required": False,
+                            "on_missing": "default",
+                            "default_value": "0",
+                            "transformations": [{"helper": "normalize_amount", "locale": "en_US"}],
+                        },
+                    ],
+                    "id_strategy": {
+                        "strategy": "fingerprint",
+                        "fingerprint_fields": ["date", "description", "amount_debit", "amount_credit"],
+                    },
+                }
+            ]
+        )
+
+    def test_debit_only_negative_amount(self) -> None:
+        xlsx = _make_xlsx(
+            [["15/03/2024", "Retiro ATM", "50.00", "0"]],
+            ["Fecha", "Descripcion", "Debito", "Credito"],
+        )
+        parser = ExcelParser()
+        txns = parser.parse(xlsx, self._make_debit_credit_config())
+        assert len(txns) == 1
+        assert txns[0].amount == Decimal("-50.00")
+
+    def test_credit_only_positive_amount(self) -> None:
+        xlsx = _make_xlsx(
+            [["16/03/2024", "Deposito", "0", "1,234.56"]],
+            ["Fecha", "Descripcion", "Debito", "Credito"],
+        )
+        parser = ExcelParser()
+        txns = parser.parse(xlsx, self._make_debit_credit_config())
+        assert len(txns) == 1
+        assert txns[0].amount == Decimal("1234.56")
+
+    def test_debit_and_credit_net_amount(self) -> None:
+        xlsx = _make_xlsx(
+            [["17/03/2024", "Ajuste", "10.00", "25.00"]],
+            ["Fecha", "Descripcion", "Debito", "Credito"],
+        )
+        parser = ExcelParser()
+        txns = parser.parse(xlsx, self._make_debit_credit_config())
+        assert len(txns) == 1
+        assert txns[0].amount == Decimal("15.00")

@@ -84,7 +84,8 @@
       "action": "fill",
       "selector": "input[type=password]",
       "value_ref": "<PASSWORD>",
-      "trigger_blur": true
+      "trigger_blur": true,
+      "sensitive": true
     },
     {
       "step_id": "submit_password",
@@ -161,7 +162,9 @@
       "action": "download_file",
       "trigger_selector": "a[href*='Excel'], .dropdown-menu a:nth-child(3)",
       "expected_mime": "application/vnd.ms-excel",
-      "expected_extension": "xls"
+      "expected_extension": "xls",
+      "expected_content_type": "application/vnd.ms-excel",
+      "selector": "download.xls"
     }
   ]
 }

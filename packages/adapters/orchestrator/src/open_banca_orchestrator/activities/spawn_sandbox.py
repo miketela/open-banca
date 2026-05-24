@@ -28,6 +28,10 @@ class SpawnSandboxResult(BaseModel):
     """Result from SpawnSandboxActivity."""
 
     container_id: str = Field(description="Docker container ID of the spawned sandbox")
+    container_ip: str = Field(
+        default="",
+        description="Container IP on the per-job sandbox network",
+    )
     sidecar_socket_path: str = Field(
         default="/run/banca/sidecar.sock",
         description="Unix socket path inside the container for BrowserSidecar IPC",
@@ -55,7 +59,8 @@ async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:  # noqa
 
     if os.environ.get("OPEN_BANCA_SKIP_SANDBOX", "").strip() in {"1", "true", "yes"}:
         activity.logger.warning(
-            "OPEN_BANCA_SKIP_SANDBOX set — skipping Docker spawn (local dev only)"
+            "OPEN_BANCA_SKIP_SANDBOX set — skipping Docker spawn (local dev only). "
+            "Playwright runs on the worker host; do NOT use in production."
         )
         return SpawnSandboxResult(container_id=f"local-skip-{input.job_id[:12]}")
 
@@ -65,10 +70,13 @@ async def spawn_sandbox(input: SpawnSandboxInput) -> SpawnSandboxResult:  # noqa
     token = runner.spawn(job_id=input.job_id, bank_id=input.bank_id)
 
     activity.logger.info(
-        "sandbox spawned: container_id=%s", token.container_id
+        "sandbox spawned: container_id=%s ip=%s",
+        token.container_id,
+        token.container_ip,
     )
 
     return SpawnSandboxResult(
         container_id=token.container_id,
+        container_ip=token.container_ip,
         sidecar_socket_path=token.sidecar_socket_path or "/run/banca/sidecar.sock",
     )

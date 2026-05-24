@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     open_banca_api_token: str = Field(
         default="dev-insecure-token",
         description="Bearer token for API auth (single-org).",
+        validation_alias=AliasChoices("OPEN_BANCA_API_TOKEN", "API_KEY"),
     )
 
     # Rate limiting

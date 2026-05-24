@@ -74,29 +74,35 @@ curl http://localhost:8080/healthz   # → 200 OK
 curl http://localhost:8080/readyz    # → 200 OK cuando worker conectado
 ```
 
-### 5. Registrar primer banco
+### 5. Registrar credenciales
+
+Opción A — API (recomendado en producción):
 
 ```bash
-# Registrar credenciales de Banco General (interactivo)
-curl -X POST http://localhost:8080/banks \
-     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
-     -H "Content-Type: application/json" \
-     -d '{"bank_id": "banco_general"}'
+export API_KEY=$(grep ^API_KEY .env | cut -d= -f2)
 
-# Registrar credenciales bancarias
 curl -X POST http://localhost:8080/credentials \
-     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     -H "Authorization: Bearer $API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"bank_id": "banco_general", "username": "TU_USUARIO", "password": "TU_PASSWORD"}'
+# → {"credential_ref": "banco_general", ...}  usar en POST /scrape
+```
+
+Opción B — CLI interactivo (desarrollo local):
+
+```bash
+uv run open-banca register-credentials --bank banco_general
+# Almacena username/password cifrados; usa el label del banco como credential_ref
 ```
 
 ### 6. Primer scrape
 
 ```bash
 curl -X POST http://localhost:8080/scrape \
-     -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
+     -H "Authorization: Bearer $API_KEY" \
      -H "Content-Type: application/json" \
-     -d '{"bank_id": "banco_general"}'
+     -H "Idempotency-Key: scrape-001" \
+     -d '{"bank_id": "banco_general", "credentials": "banco_general", "mode": "full"}'
 ```
 
 Para detalles completos: [`docs/05-operations/deployment.md`](./docs/05-operations/deployment.md).
@@ -181,18 +187,22 @@ Worker started — task queue: open-banca-task-queue
 uv run uvicorn open_banca_api.main:app --reload --port 8000
 ```
 
+> **Producción (Docker):** el servicio `api` expone puerto **8080** con
+> `uvicorn open_banca_api.main:app --host 0.0.0.0 --port 8080`.
+
 ### Paso 6 — Verificar
 
 ```bash
-# Health check (sin auth)
-curl http://localhost:8000/health
+export API_KEY=$(grep ^API_KEY .env | cut -d= -f2)
 
-# Listar bancos soportados (sin auth)
-curl http://localhost:8000/banks
+# Health check (sin auth)
+curl http://localhost:8000/healthz
+
+# Listar bancos soportados (requiere auth)
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/banks
 
 # Endpoint autenticado de prueba
-curl -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
-     http://localhost:8000/accounts
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/accounts
 ```
 
 Documentación interactiva: `http://localhost:8000/docs`

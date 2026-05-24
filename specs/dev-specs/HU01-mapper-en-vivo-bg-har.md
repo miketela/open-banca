@@ -2,8 +2,9 @@
 
 > Issue: #7
 > Branch: TBD
-> Estado: draft
+> Estado: in-progress
 > Depende de: plan-fase:F0, plan-fase:F1, plan-fase:F2 (suite verde antes de tocar live)
+> **Notas ops (2026-05-24):** Código Fase 1 listo. Pendiente mapper en vivo + HAR. Checklist: [`docs/05-operations/hu-validation-checklist.md`](../../docs/05-operations/hu-validation-checklist.md) § HU01.
 
 ## Contexto
 

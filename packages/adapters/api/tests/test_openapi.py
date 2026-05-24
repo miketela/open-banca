@@ -22,15 +22,18 @@ def test_openapi_endpoint_accessible(client: TestClient) -> None:
 
 
 def test_openapi_has_all_paths(app: object) -> None:
-    """OpenAPI spec must document all 12 endpoints."""
+    """OpenAPI spec must document all public endpoints."""
     assert isinstance(app, FastAPI)
     spec = app.openapi()
     paths = spec.get("paths", {})
 
     expected_paths = [
         "/health",
+        "/healthz",
+        "/readyz",
         "/time",
         "/scrape",
+        "/credentials",
         "/jobs/{job_id}",
         "/jobs/{job_id}/result",
         "/jobs/{job_id}/otp-confirmed",

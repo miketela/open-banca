@@ -178,9 +178,58 @@ Secuencia esperada:
 5. `api` levanta: detecta DB no existente, prompta creación → cifra con master passphrase, corre migraciones, registra usuario admin con `API_KEY`.
 6. `temporal` y `postgres-temporal` se inicializan, namespace creado.
 7. `temporal-worker` registra activities/workflows, queda listo en task queue.
-8. Operador hace primer `POST /banks` con `bank_id=banco_general` (mapping pre-existente del repo) o dispara `POST /banks/{id}/map` para correr Mapper desde cero.
-9. Operador hace primer `POST /credentials` con su user/pass de Banco General (cifrado en el vault).
-10. Primer `POST /scrape` → flujo descrito en docs.
+8. Registrar credenciales del banco (elige una opción):
+   - **API:** `POST /credentials` con Bearer auth (ver §Autenticación y credenciales).
+   - **CLI:** `docker compose exec api uv run open-banca register-credentials --bank banco_general`
+9. Primer `POST /scrape` con `credentials` = `credential_ref` devuelto → flujo descrito en docs.
+
+## Autenticación y credenciales
+
+Todas las rutas autenticadas requieren:
+
+```http
+Authorization: Bearer $API_KEY
+```
+
+(`API_KEY` en `.env`; alias `OPEN_BANCA_API_TOKEN`.)
+
+**Registrar credenciales vía API (puerto 8080 en producción):**
+
+```bash
+export API_KEY=$(grep ^API_KEY .env | cut -d= -f2)
+
+curl -X POST http://localhost:8080/credentials \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"bank_id":"banco_general","username":"TU_USUARIO","password":"TU_PASSWORD"}'
+# → credential_ref: "banco_general" — usar en POST /scrape
+```
+
+**Alternativa CLI (desarrollo o exec en container):**
+
+```bash
+uv run open-banca register-credentials --bank banco_general
+```
+
+**Primer scrape:**
+
+```bash
+curl -X POST http://localhost:8080/scrape \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: first-scrape-001" \
+  -d '{"bank_id":"banco_general","credentials":"banco_general","mode":"full"}'
+```
+
+## Desarrollo local (sin Docker)
+
+| Componente | Comando | Puerto |
+|------------|---------|--------|
+| API | `uv run uvicorn open_banca_api.main:app --reload --port 8000` | 8000 |
+| Worker | `uv run python -m open_banca_orchestrator.worker` | — |
+| Temporal | `docker compose -f docker-compose.dev.yml up -d` | 7233 / 8088 UI |
+
+En producción Docker, el servicio `api` usa puerto **8080** (`docker-compose.yml`).
 
 Health endpoints:
 

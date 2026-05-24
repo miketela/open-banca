@@ -2,8 +2,9 @@
 
 > Issue: #9
 > Branch: TBD
-> Estado: draft
+> Estado: pending (requiere OTP live)
 > Depende de: HU01, HU02
+> **Notas ops (2026-05-24):** Cookbook curl (sin scrape live): `bash scripts/validate_hu03_smoke.sh`. Evidencia: [`docs/06-banks/banco-general-e2e-evidence.md`](../../docs/06-banks/banco-general-e2e-evidence.md). Auth: `Authorization: Bearer $API_KEY` + header `Idempotency-Key`.
 
 ## Contexto
 
@@ -24,7 +25,7 @@ Primer scrape end-to-end real contra Banco General usando el stack docker-compos
 
 1. **Verificar prerequisitos**:
    ```bash
-   curl -fsS http://localhost:8000/health
+   curl -fsS http://localhost:8080/healthz
    docker compose ps
    ```
 
@@ -35,23 +36,24 @@ Primer scrape end-to-end real contra Banco General usando el stack docker-compos
 
 3. **Iniciar scrape full_historical**:
    ```bash
-   JOB_ID=$(curl -X POST http://localhost:8000/scrape \
-     -H "Authorization: Bearer $OPEN_BANCA_API_KEY" \
+   JOB_ID=$(curl -X POST http://localhost:8080/scrape \
+     -H "Authorization: Bearer $API_KEY" \
      -H "Content-Type: application/json" \
-     -d '{"bank_id":"banco_general","mode":"full_historical"}' \
+     -H "Idempotency-Key: hu03-smoke-$(date +%s)" \
+     -d '{"bank_id":"banco_general","credentials":"'$CREDENTIAL_REF'","mode":"full"}' \
      | jq -r .job_id)
    echo "Job: $JOB_ID"
    ```
 
 4. **Poll status y esperar OTP webhook** (revisar webhook.site dashboard):
    ```bash
-   watch -n 5 "curl -s http://localhost:8000/jobs/$JOB_ID -H 'Authorization: Bearer $OPEN_BANCA_API_KEY' | jq .status"
+   watch -n 5 "curl -s http://localhost:8080/jobs/$JOB_ID -H 'Authorization: Bearer $API_KEY' | jq .status"
    ```
 
 5. **Confirmar push en device físico del operador (app Banco General)**, luego:
    ```bash
-   curl -X POST http://localhost:8000/jobs/$JOB_ID/otp-confirmed \
-     -H "Authorization: Bearer $OPEN_BANCA_API_KEY"
+   curl -X POST http://localhost:8080/jobs/$JOB_ID/otp-confirmed \
+     -H "Authorization: Bearer $API_KEY"
    ```
 
 6. **Esperar webhook `job.completed`** (≤5 min). Si llega `job.failed`, capturar logs:
@@ -61,8 +63,8 @@ Primer scrape end-to-end real contra Banco General usando el stack docker-compos
 
 7. **GET resultado**:
    ```bash
-   curl -s http://localhost:8000/jobs/$JOB_ID/result \
-     -H "Authorization: Bearer $OPEN_BANCA_API_KEY" | jq .
+   curl -s http://localhost:8080/jobs/$JOB_ID/result \
+     -H "Authorization: Bearer $API_KEY" | jq .
    ```
 
 8. **Validar firma HMAC del webhook** recibido en webhook.site (manual o con script):
@@ -79,9 +81,11 @@ Primer scrape end-to-end real contra Banco General usando el stack docker-compos
 
 10. **Segunda corrida incremental** para validar cursor:
     ```bash
-    curl -X POST http://localhost:8000/scrape \
-      -H "Authorization: Bearer $OPEN_BANCA_API_KEY" \
-      -d '{"bank_id":"banco_general","mode":"incremental"}'
+    curl -X POST http://localhost:8080/scrape \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -H "Idempotency-Key: hu03-incremental-$(date +%s)" \
+      -d '{"bank_id":"banco_general","credentials":"'$CREDENTIAL_REF'","mode":"incremental"}'
     ```
 
 ## Tests

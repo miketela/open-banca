@@ -23,6 +23,7 @@ _KNOWN_ACTIONS = frozenset(
         "assert_text",
         "extract_table",
         "download_file",
+        "prompt_user",
     }
 )
 

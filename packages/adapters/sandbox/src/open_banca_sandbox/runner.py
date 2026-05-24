@@ -27,6 +27,7 @@ import httpx
 from open_banca_domain.ports.sandbox_port import SandboxPort, SandboxToken
 
 from open_banca_sandbox.exceptions import (
+    NetworkPolicyViolation,
     SandboxKillError,
     SandboxProxyError,
     SandboxSpawnError,
@@ -183,23 +184,32 @@ class DockerSandboxRunner:
     def attach_network_policy(
         self, token: SandboxToken, allowed_domains: list[str]
     ) -> None:
-        """Record the network policy for the container.
+        """Validate and record the egress allowlist for the container.
 
-        In the current implementation the network egress is enforced at the
-        Docker network level (internal bridge = no default gateway).  The
-        ``allowed_domains`` list is stored as a container label so that
-        monitoring tooling can audit what was declared.
-
-        Full iptables-level DNS filtering is out of scope for v1 — the
-        internal network already prevents arbitrary egress.
+        Egress is enforced structurally by the internal Docker bridge
+        (``Internal=True``, no default gateway).  Full iptables-level DNS
+        filtering is out of scope for v1; this method validates the declared
+        allowlist and logs it for audit.
 
         Raises:
-            NetworkPolicyViolation: (future) if domains are not in bank's list.
+            NetworkPolicyViolation: If *allowed_domains* contains unknown hosts.
         """
-        # Label the container with the domain list for audit trail.
-        # Docker does not support relabelling a running container via the API
-        # without restart — we log the policy instead and it is enforced
-        # structurally by the network being internal.
+        if not allowed_domains:
+            raise NetworkPolicyViolation("allowed_domains must be non-empty")
+
+        bank_id = self._read_container_label(token.container_id, "com.open-banca.bank-id")
+        if bank_id:
+            expected = set(domains_for_bank(bank_id, include_llm=True))
+            unknown = [d for d in allowed_domains if d not in expected]
+            if unknown:
+                raise NetworkPolicyViolation(
+                    f"Domains not in bank allowlist for {bank_id!r}: {unknown}"
+                )
+
+        for domain in allowed_domains:
+            if not domain or " " in domain or domain.startswith("."):
+                raise NetworkPolicyViolation(f"Invalid domain in allowlist: {domain!r}")
+
         logger.info(
             "sandbox.network_policy container_id=%s allowed_domains=%s",
             token.container_id,
@@ -327,6 +337,19 @@ class DockerSandboxRunner:
             raise SandboxProxyError(
                 "POST", f"/containers/{container_id}/start", resp.status_code, resp.text
             )
+
+    def _read_container_label(self, container_id: str, label_key: str) -> str:
+        """Best-effort read of a container label via inspect."""
+        try:
+            resp = self._client.get(
+                f"/{_DOCKER_API_VERSION}/containers/{container_id}/json"
+            )
+            if resp.status_code != 200:
+                return ""
+            labels = resp.json().get("Config", {}).get("Labels", {}) or {}
+            return str(labels.get(label_key, ""))
+        except httpx.HTTPError:
+            return ""
 
     def _inspect_ip(self, container_id: str, network_name: str) -> str:
         resp = self._client.get(

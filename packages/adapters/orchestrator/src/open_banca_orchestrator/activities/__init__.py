@@ -117,6 +117,16 @@ from open_banca_orchestrator.activities.list_accounts import (
     AccountInfo,
     list_accounts,
 )
+from open_banca_orchestrator.activities.load_bank_map import (
+    LoadBankMapInput,
+    LoadBankMapResult,
+    load_bank_map,
+)
+from open_banca_orchestrator.activities.persist_remap_map import (
+    PersistRemapMapInput,
+    PersistRemapMapResult,
+    persist_remap_map,
+)
 
 __all__ = [
     # Login
@@ -200,4 +210,12 @@ __all__ = [
     "ListAccountsResult",
     "AccountInfo",
     "list_accounts",
+    # Load bank map
+    "LoadBankMapInput",
+    "LoadBankMapResult",
+    "load_bank_map",
+    # Persist remap map
+    "PersistRemapMapInput",
+    "PersistRemapMapResult",
+    "persist_remap_map",
 ]

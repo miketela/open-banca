@@ -10,6 +10,7 @@ _PROTECTED_PATHS = [
     ("GET", "/banks"),
     ("GET", "/accounts"),
     ("POST", "/jobs/fake-id/cancel"),
+    ("POST", "/credentials"),
 ]
 
 

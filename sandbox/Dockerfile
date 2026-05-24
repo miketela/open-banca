@@ -38,7 +38,7 @@ RUN uv venv /sandbox/.venv \
         pydantic>=2 \
         httpx \
         opentelemetry-sdk \
-    && playwright install chromium --with-deps
+    && /sandbox/.venv/bin/playwright install chromium --with-deps
 
 # Crear usuario nobody para runtime
 RUN useradd --uid 65534 --gid 65534 --no-create-home --shell /sbin/nologin sandbox-user 2>/dev/null || true \

@@ -162,6 +162,27 @@ class TemporalOrchestratorAdapter:
         except Exception:
             return "unknown"
 
+    async def async_check_readiness(self) -> bool:
+        """Return True when Temporal is reachable and a worker polls the task queue."""
+        try:
+            from temporalio.api.enums.v1 import TaskQueueType
+            from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
+            from temporalio.api.workflowservice.v1 import GetSystemInfoRequest
+
+            client = self._client  # type: ignore[attr-defined]
+            await client.workflow_service.get_system_info(GetSystemInfoRequest())
+            response = await client.workflow_service.describe_task_queue(
+                DescribeTaskQueueRequest(
+                    namespace=client.namespace,
+                    task_queue=self._task_queue,
+                    task_queue_type=TaskQueueType.TASK_QUEUE_TYPE_WORKFLOW,
+                )
+            )
+            return bool(response.pollers)
+        except Exception:
+            logger.debug("Temporal readiness check failed", exc_info=True)
+            return False
+
 
 # ---------------------------------------------------------------------------
 # Storage-backed EventBus (webhook outbox)
@@ -342,6 +363,16 @@ def get_list_accounts_uc(
 ) -> ListAccounts:
     """Wire ListAccounts use case."""
     return ListAccounts(job_store=job_store)  # type: ignore[arg-type]
+
+
+def check_database_ready(conn: object) -> bool:
+    """Return True when the storage connection can execute a trivial query."""
+    try:
+        conn.execute("SELECT 1")  # type: ignore[attr-defined]
+        return True
+    except Exception:
+        logger.debug("Database readiness check failed", exc_info=True)
+        return False
 
 
 def get_dedup_engine(

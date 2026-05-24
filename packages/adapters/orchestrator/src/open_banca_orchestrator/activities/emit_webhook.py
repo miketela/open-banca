@@ -70,13 +70,18 @@ async def emit_webhook(input: EmitWebhookInput) -> EmitWebhookResult:  # noqa: A
     db_path = os.environ.get("OPEN_BANCA_WEBHOOK_DB_PATH", "./webhook_outbox.db")
 
     if not target_url or not secret:
-        activity.logger.warning(
-            "webhook skipped (dev): OPEN_BANCA_WEBHOOK_TARGET_URL or "
-            "OPEN_BANCA_WEBHOOK_SECRET not set job_id=%s event_type=%s",
-            input.job_id,
-            input.event_type,
+        if os.environ.get("OPEN_BANCA_ENV") == "development":
+            activity.logger.warning(
+                "webhook skipped (dev): OPEN_BANCA_WEBHOOK_TARGET_URL or "
+                "OPEN_BANCA_WEBHOOK_SECRET not set job_id=%s event_type=%s",
+                input.job_id,
+                input.event_type,
+            )
+            return EmitWebhookResult(enqueued=False, event_id=input.event_id)
+        raise ApplicationError(
+            "Missing OPEN_BANCA_WEBHOOK_TARGET_URL or OPEN_BANCA_WEBHOOK_SECRET",
+            non_retryable=True,
         )
-        return EmitWebhookResult(enqueued=False, event_id=input.event_id)
 
     try:
         event_type = WebhookEventType(input.event_type)

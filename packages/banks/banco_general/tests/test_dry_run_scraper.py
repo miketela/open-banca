@@ -118,6 +118,7 @@ def test_dry_run_inline_validation() -> None:
             "assert_text",
             "extract_table",
             "download_file",
+            "prompt_user",
         }
     )
     for step in bank_map.steps:

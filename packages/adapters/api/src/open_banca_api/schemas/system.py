@@ -1,9 +1,9 @@
-"""Schemas for system endpoints: /time, /health."""
+"""Schemas for system endpoints: /time, /health, /healthz, /readyz."""
 from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TimeResponse(BaseModel):
@@ -16,9 +16,28 @@ class TimeResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """GET /health response."""
+    """GET /health and GET /healthz response."""
 
     model_config = ConfigDict(frozen=True)
 
     status: str = "ok"
     version: str
+
+
+class ReadinessChecks(BaseModel):
+    """Individual dependency checks for GET /readyz."""
+
+    model_config = ConfigDict(frozen=True)
+
+    temporal: bool = Field(description="Temporal frontend reachable with active worker pollers.")
+    database: bool = Field(description="Encrypted SQLite database accessible.")
+
+
+class ReadinessResponse(BaseModel):
+    """GET /readyz response — 200 when ready, 503 when not."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str = Field(description="'ready' or 'not_ready'.")
+    version: str
+    checks: ReadinessChecks

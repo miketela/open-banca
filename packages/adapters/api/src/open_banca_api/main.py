@@ -2,7 +2,7 @@
 
 Design notes:
 - OpenAPI 3.1 (FastAPI >=0.110 default).
-- Bearer auth on all endpoints except /health and /time.
+- Bearer auth on all endpoints except /health, /healthz, /readyz, and /time.
 - slowapi rate limiting: 60/minute on POST /scrape.
 - RedactMiddleware scrubs SECRET_CANARY_VALUE and PII_CANARY_* from bodies.
 - NO Temporal / DB connections at boot (task #31 handles wiring).
@@ -21,7 +21,16 @@ from slowapi.util import get_remote_address
 
 from open_banca_api.config import get_settings
 from open_banca_api.middleware.redact import RedactMiddleware
-from open_banca_api.routers import accounts, banks, jobs, maps, scrape, system, webhooks
+from open_banca_api.routers import (
+    accounts,
+    banks,
+    credentials,
+    jobs,
+    maps,
+    scrape,
+    system,
+    webhooks,
+)
 
 
 def _get_bearer_or_ip(request: Request) -> str:
@@ -102,6 +111,7 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(system.router)
+    app.include_router(credentials.router)
     app.include_router(scrape.router)
     app.include_router(jobs.router)
     app.include_router(maps.router)

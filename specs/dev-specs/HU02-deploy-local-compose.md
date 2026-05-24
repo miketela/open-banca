@@ -2,8 +2,9 @@
 
 > Issue: #8
 > Branch: TBD
-> Estado: draft
+> Estado: in-progress
 > Depende de: HU01
+> **Notas ops (2026-05-24):** `/healthz` + `/readyz` implementados; puerto prod **8080**. Validación: `bash scripts/validate_hu02_deploy.sh` (stack running) o `bash scripts/smoke_compose.sh` (smoke CI). Checklist: [`docs/05-operations/hu-validation-checklist.md`](../../docs/05-operations/hu-validation-checklist.md) § HU02.
 
 ## Contexto
 
@@ -14,7 +15,7 @@
 - [ ] `.env` (no commiteado) tiene todas las vars requeridas con valores reales (no placeholders).
 - [ ] `docker compose up -d` levanta los 5 servicios sin error.
 - [ ] `docker compose ps` muestra todos como `healthy` o `running` (según healthcheck definido).
-- [ ] `curl http://localhost:8000/health` retorna 200 con `status: ok`.
+- [ ] `curl http://localhost:8080/healthz` retorna 200; `curl http://localhost:8080/readyz` retorna 200 cuando worker conectado.
 - [ ] Worker logs muestran "worker started" con las activities registradas (incluyendo las nuevas de plan F1).
 - [ ] Temporal UI accesible en `http://localhost:8233` (si el profile está activo) y muestra el worker conectado.
 - [ ] Documentado en `docs/05-operations/deployment.md` cómo replicar el deploy.
@@ -45,7 +46,8 @@
 3. **Validar healthchecks**:
    ```bash
    docker compose ps
-   curl -fsS http://localhost:8000/health
+   curl -fsS http://localhost:8080/healthz
+   curl -fsS http://localhost:8080/readyz
    docker compose logs temporal-worker --tail 30 | grep "worker started"
    ```
 

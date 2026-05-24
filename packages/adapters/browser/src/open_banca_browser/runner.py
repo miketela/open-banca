@@ -67,6 +67,7 @@ class ScraperRunner:
         vault: SecurityAnswerVault | None = None,
         credential_id: str | None = None,
         heartbeat_fn: Callable[[], None] | None = None,
+        cdp_url: str | None = None,
     ) -> None:
         self._job_id_provider = job_id_provider or _default_job_id_provider
         self._secret_resolver: Callable[[str], str] = (
@@ -77,6 +78,7 @@ class ScraperRunner:
         self._vault = vault
         self._credential_id = credential_id
         self._heartbeat_fn = heartbeat_fn
+        self._cdp_url = cdp_url
 
     def execute_map(self, map: BankMap, credential: Credential) -> ScrapeResult:
         """Execute all steps in the BankMap sequentially.
@@ -91,20 +93,29 @@ class ScraperRunner:
         job_id = self._job_id_provider()
         logger.info("ScraperRunner starting job=%s bank=%s", job_id, map.bank_id)
 
-        if not _REAL_BROWSER:
+        use_real_browser = _REAL_BROWSER or bool(self._cdp_url)
+        if not use_real_browser:
             return self._execute_stub(map, credential, job_id)
 
         from playwright.sync_api import sync_playwright  # lazy — only in real mode
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=self._headless)
-            context = browser.new_context()
-            page = context.new_page()
+            if self._cdp_url:
+                browser = pw.chromium.connect_over_cdp(self._cdp_url)
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
+                page = context.pages[0] if context.pages else context.new_page()
+                owns_browser = False
+            else:
+                browser = pw.chromium.launch(headless=self._headless)
+                context = browser.new_context()
+                page = context.new_page()
+                owns_browser = True
             try:
                 return self._run_steps(page, map, credential, job_id)
             finally:
-                context.close()
-                browser.close()
+                if owns_browser:
+                    context.close()
+                    browser.close()
 
     def _execute_stub(
         self, map: BankMap, credential: Credential, job_id: str

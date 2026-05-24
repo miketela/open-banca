@@ -43,6 +43,10 @@ with workflow.unsafe.imports_passed_through():
         execute_scrape_map,
     )
     from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
+    from open_banca_orchestrator.activities.load_bank_map import (
+        LoadBankMapInput,
+        load_bank_map,
+    )
     from open_banca_orchestrator.activities.parse_excel import (
         ParseExcelInput,
         ParserConfig,
@@ -63,6 +67,11 @@ with workflow.unsafe.imports_passed_through():
         ValidateInput,
         ValidateResult,
         validate,
+    )
+    from open_banca_orchestrator.workflows.remap_bank import (
+        RemapBankInput,
+        RemapBankResult,
+        RemapBankWorkflow,
     )
 
 
@@ -204,6 +213,7 @@ class ScrapeJobWorkflow:
         all_transactions: list[TransactionRecord] = []
         account_results: list[AccountResult] = []
         sandbox_container_id = ""
+        sandbox_container_ip = ""
 
         if self._cancelled:
             return ScrapeJobResult(
@@ -219,59 +229,67 @@ class ScrapeJobWorkflow:
             retry_policy=_RETRY_SANDBOX,
         )
         sandbox_container_id = sandbox_result.container_id
+        sandbox_container_ip = sandbox_result.container_ip
 
         if self._cancelled:
             return await self._do_cancel(input.job_id, sandbox_container_id)
 
-        scrape_result: ExecuteScrapeMapResult = await workflow.execute_activity(
-            execute_scrape_map,
-            ExecuteScrapeMapInput(
-                job_id=input.job_id,
-                bank_id=input.bank_id,
-                credential_ref=input.credential_ref,
-                sandbox_container_id=sandbox_container_id,
-            ),
-            start_to_close_timeout=datetime.timedelta(minutes=10),
-            retry_policy=_RETRY_EXECUTE_MAP,
-        )
-
-        if self._cancelled:
-            return await self._do_cancel(input.job_id, sandbox_container_id)
-
-        terminal = await self._handle_scrape_terminal(
-            input,
-            scrape_result,
-            sandbox_container_id,
-            all_transactions,
-            account_results,
-        )
-        if terminal is not None:
-            return terminal
-
-        payload_hash = hashlib.sha256(
-            str([t.model_dump() for t in all_transactions]).encode()
-        ).hexdigest()
-
-        validate_result: ValidateResult = await workflow.execute_activity(
-            validate,
-            ValidateInput(
-                job_id=input.job_id,
-                account_id="all",
-                transactions=all_transactions,
-                payload_hash=payload_hash,
-            ),
-            start_to_close_timeout=datetime.timedelta(seconds=60),
-            retry_policy=_RETRY_VALIDATE,
-        )
-
-        if validate_result.breakage_detected:
-            handled = await self._handle_validation_breakage(
-                input.job_id,
-                validate_result,
-                sandbox_container_id,
+        while True:
+            scrape_result: ExecuteScrapeMapResult = await workflow.execute_activity(
+                execute_scrape_map,
+                ExecuteScrapeMapInput(
+                    job_id=input.job_id,
+                    bank_id=input.bank_id,
+                    credential_ref=input.credential_ref,
+                    sandbox_container_id=sandbox_container_id,
+                    sandbox_container_ip=sandbox_container_ip or None,
+                ),
+                start_to_close_timeout=datetime.timedelta(minutes=10),
+                retry_policy=_RETRY_EXECUTE_MAP,
             )
-            if handled is not None:
-                return handled
+
+            if self._cancelled:
+                return await self._do_cancel(input.job_id, sandbox_container_id)
+
+            all_transactions.clear()
+            account_results.clear()
+
+            terminal = await self._handle_scrape_terminal(
+                input,
+                scrape_result,
+                sandbox_container_id,
+                all_transactions,
+                account_results,
+            )
+            if terminal is not None:
+                return terminal
+
+            payload_hash = hashlib.sha256(
+                str([t.model_dump() for t in all_transactions]).encode()
+            ).hexdigest()
+
+            validate_result: ValidateResult = await workflow.execute_activity(
+                validate,
+                ValidateInput(
+                    job_id=input.job_id,
+                    account_id="all",
+                    transactions=all_transactions,
+                    payload_hash=payload_hash,
+                ),
+                start_to_close_timeout=datetime.timedelta(seconds=60),
+                retry_policy=_RETRY_VALIDATE,
+            )
+
+            if validate_result.breakage_detected:
+                handled = await self._handle_validation_breakage(
+                    input,
+                    validate_result,
+                    sandbox_container_id,
+                )
+                if handled is not None:
+                    return handled
+                continue
+            break
 
         await workflow.execute_activity(
             persist_result,
@@ -414,7 +432,7 @@ class ScrapeJobWorkflow:
 
     async def _handle_validation_breakage(
         self,
-        job_id: str,
+        input: ScrapeJobInput,
         validate_result: ValidateResult,
         sandbox_container_id: str,
     ) -> ScrapeJobResult | None:
@@ -422,6 +440,7 @@ class ScrapeJobWorkflow:
             BreakageEvent as DomainBreakageEvent,
         )
 
+        job_id = input.job_id
         breakage_hash = hashlib.sha256(str(validate_result.issues).encode()).hexdigest()
         breakage_event = DomainBreakageEvent(
             job_id=job_id,
@@ -444,29 +463,48 @@ class ScrapeJobWorkflow:
             retry_policy=_RETRY_JUDGE,
         )
 
-        await workflow.execute_activity(
-            emit_webhook,
-            EmitWebhookInput(
-                event_id=workflow.uuid4().hex,
-                event_type=WebhookEventType.JOB_REMAP_PROPOSED.value,
+        if judge_result.route not in {"human_required", "partial_remap", "full_remap"}:
+            await self._emit_failure(job_id, f"judge_route_{judge_result.route}")
+            return ScrapeJobResult(
                 job_id=job_id,
-                payload={
-                    "route": judge_result.route,
-                    "confidence": judge_result.confidence,
-                    "risk": judge_result.risk,
-                    "rationale": judge_result.rationale,
-                },
-            ),
-            start_to_close_timeout=datetime.timedelta(seconds=10),
-            retry_policy=_RETRY_WEBHOOK,
+                status="failed",
+                errors=[f"Judge returned unrecoverable route: {judge_result.route}"],
+            )
+
+        proposal_id = workflow.uuid4().hex
+        map_result = await workflow.execute_activity(
+            load_bank_map,
+            LoadBankMapInput(bank_id=input.bank_id),
+            start_to_close_timeout=datetime.timedelta(seconds=15),
+            retry_policy=RetryPolicy(maximum_attempts=2),
         )
 
-        await workflow.wait_condition(
-            lambda: self._remap_approved_proposal_id is not None or self._cancelled,
+        remap_result: RemapBankResult = await workflow.execute_child_workflow(
+            RemapBankWorkflow.run,
+            RemapBankInput(
+                bank_id=input.bank_id,
+                breakage_hash=breakage_hash,
+                proposal_id=proposal_id,
+                current_map=map_result.bank_map,
+                job_id=job_id,
+                breakage_event=breakage_event,
+                sandbox_container_id=sandbox_container_id,
+                judge_decision=judge_result.route,
+            ),
+            id=proposal_id,
         )
 
         if self._cancelled:
             return await self._do_cancel(job_id, sandbox_container_id)
+
+        if remap_result.status != "completed":
+            reason = f"remap_{remap_result.status}"
+            await self._emit_failure(job_id, reason)
+            return ScrapeJobResult(
+                job_id=job_id,
+                status="failed",
+                errors=[f"RemapBankWorkflow ended with status={remap_result.status}"],
+            )
 
         return None
 
