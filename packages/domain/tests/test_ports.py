@@ -1,4 +1,5 @@
 """Tests for all 11 domain ports — Protocol conformance + runtime_checkable."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -17,7 +18,7 @@ from open_banca_domain.ports.excel_parser_port import ExcelParserPort
 from open_banca_domain.ports.job_store_port import JobStorePort
 from open_banca_domain.ports.llm_port import LLMPort, LLMResponse
 from open_banca_domain.ports.orchestrator_port import OrchestratorPort
-from open_banca_domain.ports.sandbox_port import SandboxPort
+from open_banca_domain.ports.sandbox_port import SandboxPort, SandboxToken
 from open_banca_domain.ports.scraper_port import ScrapeResult, ScraperPort
 from open_banca_domain.ports.secret_store_port import SecretStorePort
 from open_banca_domain.ports.workflow_engine_port import WorkflowEnginePort
@@ -35,6 +36,7 @@ def _make_credential() -> Credential:
 # Minimal concrete fakes that implement each Protocol
 # ---------------------------------------------------------------------------
 
+
 class FakeScraper:
     def execute_map(self, map: BankMap, credential: Credential) -> ScrapeResult:
         return ScrapeResult(raw_data=b"", breakage_events=[], metadata={})
@@ -43,6 +45,7 @@ class FakeScraper:
 class FakeOrchestrator:
     def start_job(self, bank: str, credential_ref: str, mode: str) -> str:
         return str(uuid4())
+
     def signal_otp_confirmed(self, job_id: str) -> None: ...
     def signal_remap_approved(self, proposal_id: str) -> None: ...
     def cancel_job(self, job_id: str) -> None: ...
@@ -54,20 +57,25 @@ class FakeJobStore:
     def save_job(self, job: Job) -> None: ...
     def load_job(self, job_id: str) -> Job | None:
         return None
+
     def list_jobs(self) -> list[Job]:
         return []
+
     def save_account(self, account: Any) -> None: ...
     def save_transaction(self, tx: Transaction) -> None: ...
     def get_cursor(self, bank: str) -> str | None:
         return None
+
     def save_cursor(self, bank: str, cursor: str) -> None: ...
 
 
 class FakeSecretStore:
     def store_credential(self, bank: str, plaintext: str, label: str) -> Credential:
         return _make_credential()
+
     def fetch_credential(self, credential_ref: str) -> str:
         return "secret"
+
     def rotate_master(self) -> None: ...
 
 
@@ -86,19 +94,26 @@ class FakeLLM:
 class FakeBrowserDriver:
     def launch_session(self, job_id: str) -> str:
         return "session-1"
+
     def navigate(self, session_id: str, url: str) -> None: ...
     def fill_sensitive(self, session_id: str, selector: str, value: str) -> None: ...
     def click(self, session_id: str, selector: str) -> None: ...
     def screenshot(self, session_id: str) -> bytes:
         return b""
+
     def close(self, session_id: str) -> None: ...
 
 
 class FakeSandbox:
-    def spawn(self, job_id: str) -> str:
-        return "container-1"
-    def kill(self, container_id: str) -> None: ...
-    def attach_network_policy(self, container_id: str, policy: str) -> None: ...
+    def spawn(self, job_id: str, bank_id: str) -> SandboxToken:
+        return SandboxToken(
+            container_id="container-1",
+            container_ip="10.0.0.1",
+            network_name=f"sandbox-{job_id}",
+        )
+
+    def kill(self, token: SandboxToken) -> None: ...
+    def attach_network_policy(self, token: SandboxToken, allowed_domains: list[str]) -> None: ...
 
 
 class FakeExcelParser:
@@ -119,19 +134,23 @@ class FakeClock:
 class FakeWorkflowEngine:
     def start_job(self, bank: str, credential_ref: str, mode: str) -> str:
         return str(uuid4())
+
     def signal_otp_confirmed(self, job_id: str) -> None: ...
     def signal_remap_approved(self, proposal_id: str) -> None: ...
     def cancel_job(self, job_id: str) -> None: ...
     def query_status(self, job_id: str) -> str:
         return "pending"
+
     def get_workflow_history(self, job_id: str) -> list[dict[str, Any]]:
         return []
+
     def time_skip(self, seconds: float) -> None: ...
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestScraperPort:
     def test_runtime_checkable(self) -> None:
@@ -209,8 +228,9 @@ class TestSandboxPort:
     def test_runtime_checkable(self) -> None:
         assert isinstance(FakeSandbox(), SandboxPort)
 
-    def test_spawn_returns_container_id(self) -> None:
-        assert FakeSandbox().spawn("job-1") == "container-1"
+    def test_spawn_returns_sandbox_token(self) -> None:
+        token = FakeSandbox().spawn("job-1", "banco_general")
+        assert token.container_id == "container-1"
 
 
 class TestExcelParserPort:

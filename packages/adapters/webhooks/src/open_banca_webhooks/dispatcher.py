@@ -137,9 +137,7 @@ class WebhookDispatcher:
                 # (original signature in outbox is for audit trail only)
                 ts = int(time.time())
                 nonce = str(uuid.uuid4())
-                delivery_signature = sign_payload(
-                    self._secret, body, timestamp=ts, nonce=nonce
-                )
+                delivery_signature = sign_payload(self._secret, body, timestamp=ts, nonce=nonce)
 
                 headers = {
                     _HEADER_SIGNATURE: delivery_signature,

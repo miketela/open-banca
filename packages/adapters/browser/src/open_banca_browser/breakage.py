@@ -1,4 +1,5 @@
 """BreakageEvent factory — builds domain entity from runner error context."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

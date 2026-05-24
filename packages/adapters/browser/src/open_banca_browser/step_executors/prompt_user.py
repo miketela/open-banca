@@ -13,16 +13,16 @@ Flow:
 HumanInputRequired is a normal pause, not an error. The Temporal layer handles it
 by invoking HumanInputAwaitActivity and emitting webhook ``job.human_input_required``.
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import unicodedata
-from collections.abc import Callable
 from typing import Any, Protocol
 
 from open_banca_browser.errors import HumanInputRequired, SelectorNotFound, StepTimeout
-from open_banca_browser.step_executors._utils import extra, root_locator
+from open_banca_browser.step_executors._utils import extra
 from open_banca_domain.entities.bank_map import StepSpec
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 class SecurityAnswerVault(Protocol):
     """Protocol expected from vault object passed to execute_prompt_user."""
 
-    def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None:
-        ...
+    def fetch_security_answer(self, credential_id: str, question_hash: str) -> str | None: ...
 
     def store_security_answer(
         self,
@@ -42,8 +41,7 @@ class SecurityAnswerVault(Protocol):
         *,
         field_key: str,
         ttl_days: int | None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 def _normalize_question(text: str) -> str:
@@ -58,138 +56,14 @@ def _normalize_question(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     text = text.lower()
     # Strip Unicode punctuation
-    text = "".join(
-        ch for ch in text if not unicodedata.category(ch).startswith("P")
-    )
+    text = "".join(ch for ch in text if not unicodedata.category(ch).startswith("P"))
     # Collapse whitespace
     return " ".join(text.split())
 
 
-# Labels/copy that are NOT the security question (input hints, buttons, headers).
-_GENERIC_QUESTION_PHRASES = frozenset(
-    {
-        "respuesta",
-        "answer",
-        "tu respuesta",
-        "your answer",
-        "validar",
-        "ingresar en banca en línea",
-        "ingresar en banca en linea",
-        "abrir página web",
-        "abrir pagina web",
-        "¿la olvidaste?",
-        "la olvidaste",
-    }
-)
-
-_DEFAULT_QUESTION_FALLBACKS = (
-    "p:has-text('?')",
-    "[class*='pregunta']",
-    "[class*='question']",
-    ".login-step p",
-    "#answer ~ p",
-    "legend",
-)
-
-
-def _is_valid_question_text(text: str) -> bool:
-    """Reject input labels and short chrome; keep real question sentences."""
-    cleaned = " ".join(text.split()).strip()
-    if len(cleaned) < 12:
-        return False
-    lower = cleaned.lower()
-    if lower in _GENERIC_QUESTION_PHRASES:
-        return False
-    # Single-word field labels
-    if " " not in cleaned and "?" not in cleaned and "¿" not in cleaned:
-        return False
-    return True
-
-
-def _score_question_candidate(text: str) -> int:
-    if not _is_valid_question_text(text):
-        return -1
-    score = len(text)
-    if "?" in text or "¿" in text:
-        score += 500
-    return score
-
-
-def _pick_best_question(candidates: list[str]) -> str | None:
-    best_text: str | None = None
-    best_score = -1
-    for text in candidates:
-        score = _score_question_candidate(text)
-        if score > best_score:
-            best_score = score
-            best_text = text.strip()
-    return best_text
-
-
-def _split_selectors(raw: str) -> list[str]:
-    return [part.strip() for part in raw.split(",") if part.strip()]
-
-
-def _wait_for_answer_field(root: Any, answer_selector: str, timeout_ms: int) -> None:
-    loc = root.locator(answer_selector).first
-    loc.wait_for(state="attached", timeout=timeout_ms)
-
-
-def _extract_from_answer_context(root: Any, answer_selector: str) -> list[str]:
-    """Parse lines of text near the answer field (excludes input chrome)."""
-    loc = root.locator(answer_selector)
-    if loc.count() == 0:
-        return []
-    raw: str = loc.first.evaluate(
-        """(el) => {
-        const block = el.closest("form") || el.closest("main") || el.closest("[role='main']")
-            || document.body;
-        if (!block) return "";
-        const clone = block.cloneNode(true);
-        clone.querySelectorAll("input,button,select,textarea,label").forEach((n) => n.remove());
-        return (clone.innerText || "").trim();
-    }"""
-    )
-    return [ln.strip() for ln in raw.splitlines() if ln.strip()]
-
-
-def extract_question_text(
-    root: Any,
-    *,
-    question_selector: str,
-    answer_selector: str,
-    question_wait_ms: int = 20_000,
-    question_fallback_selectors: tuple[str, ...] = _DEFAULT_QUESTION_FALLBACKS,
+def compute_question_hash(
+    bank_id: str, credential_id: str, field_key: str, question_text: str
 ) -> str:
-    """Wait for the answer field, then resolve visible question copy from the DOM."""
-    _wait_for_answer_field(root, answer_selector, question_wait_ms)
-
-    candidates: list[str] = []
-    for sel in _split_selectors(question_selector) + list(question_fallback_selectors):
-        loc = root.locator(sel)
-        count = loc.count()
-        if count == 0:
-            continue
-        for idx in range(min(count, 8)):
-            try:
-                text = loc.nth(idx).inner_text(timeout=3_000).strip()
-            except Exception:
-                continue
-            if text:
-                candidates.append(text)
-
-    candidates.extend(_extract_from_answer_context(root, answer_selector))
-
-    best = _pick_best_question(candidates)
-    if best:
-        return best
-
-    raise SelectorNotFound(
-        f"prompt_user: could not extract question text near {answer_selector!r}"
-    )
-
-
-def compute_question_hash(bank_id: str, credential_id: str, field_key: str, question_text: str) -> str:
     """Compute the SHA-256 cache key for a security question.
 
     Cache key composition (ADR-0021):
@@ -239,26 +113,23 @@ def execute_prompt_user(
     if not answer_selector:
         raise SelectorNotFound(f"prompt_user step {step.step_id!r}: missing selector")
 
-    root = root_locator(page, step)
-    question_wait_ms = int(params.get("question_wait_ms", 20_000))
-
-    # 1. Wait for answer field, then extract question text from DOM
+    # 1. Extract question text from DOM
     try:
-        question_text = extract_question_text(
-            root,
-            question_selector=question_selector,
-            answer_selector=answer_selector,
-            question_wait_ms=question_wait_ms,
-        )
+        locator = page.locator(question_selector)
+        if locator.count() == 0:
+            raise SelectorNotFound(
+                f"prompt_user: question_selector not found: {question_selector!r}"
+            )
+        question_text: str = locator.inner_text(timeout=5_000).strip()
     except SelectorNotFound:
         raise
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
             raise StepTimeout(
-                f"prompt_user: timeout waiting for answer field {answer_selector!r}"
+                f"prompt_user: timeout reading question_selector {question_selector!r}"
             ) from exc
-        raise SelectorNotFound(f"prompt_user: error extracting question: {exc}") from exc
+        raise SelectorNotFound(f"prompt_user: error reading question_selector: {exc}") from exc
 
     # 2. Compute cache key hash
     question_hash = compute_question_hash(bank_id, credential_id, field_key, question_text)
@@ -282,7 +153,7 @@ def execute_prompt_user(
             step.step_id,
         )
         try:
-            ans_locator = root.locator(answer_selector)
+            ans_locator = page.locator(answer_selector)
             if ans_locator.count() == 0:
                 raise SelectorNotFound(
                     f"prompt_user: answer selector not found: {answer_selector!r}"
@@ -307,39 +178,10 @@ def execute_prompt_user(
         field_key,
         step.step_id,
     )
-    frame_selector: str = params.get("frame_selector") or params.get("iframe_selector") or ""
     raise HumanInputRequired(
         question_text=question_text,
         field_key=field_key,
         question_hash=question_hash,
         selector=answer_selector,
         timeout_s=timeout_s,
-        frame_selector=frame_selector,
     )
-
-
-def fill_prompt_user_answer(
-    page: Any,
-    selector: str,
-    answer: str,
-    *,
-    frame_selector: str = "",
-) -> None:
-    """Fill the answer input after human input was delivered."""
-    try:
-        root = (
-            page.frame_locator(frame_selector)
-            if frame_selector
-            else page
-        )
-        ans_locator = root.locator(selector)
-        if ans_locator.count() == 0:
-            raise SelectorNotFound(f"prompt_user: answer selector not found: {selector!r}")
-        ans_locator.fill(answer, timeout=10_000)
-    except SelectorNotFound:
-        raise
-    except Exception as exc:
-        msg = str(exc).lower()
-        if "timeout" in msg:
-            raise StepTimeout(f"prompt_user: fill timeout on {selector!r}") from exc
-        raise StepTimeout(f"prompt_user: fill error: {exc}") from exc

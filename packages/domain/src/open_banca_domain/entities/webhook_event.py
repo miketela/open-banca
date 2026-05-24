@@ -1,4 +1,5 @@
 """WebhookEvent entity — 8 canonical outbound events."""
+
 from __future__ import annotations
 
 from datetime import datetime

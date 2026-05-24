@@ -3,6 +3,7 @@
 Verifies that when a cost_counter is injected, each LLM call emits to the
 llm_cost_usd_total OTel metric (task #27).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -121,6 +122,7 @@ class TestCostMetricEmission:
                     if metric.name == "llm_cost_usd_total":
                         # Check that at least one data point has agent=remapper
                         for dp in metric.data.data_points:
-                            if dp.attributes.get("agent") == "remapper":
+                            attrs = dp.attributes or {}
+                            if attrs.get("agent") == "remapper":
                                 return
         pytest.fail("No llm_cost_usd_total data point with agent=remapper found")

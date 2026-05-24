@@ -1,4 +1,5 @@
 """ScraperPort — executes a BankMap and emits BreakageEvents."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

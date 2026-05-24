@@ -18,6 +18,7 @@ Per ADR-0008 amendment and ``docs/04-security/secrets-at-rest.md``:
 Call ``run_boot_check()`` once at application startup before instantiating
 ``SecretVault`` or ``ConnectionPool``.
 """
+
 from __future__ import annotations
 
 import logging

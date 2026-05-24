@@ -12,6 +12,7 @@ The sanitizer processes all HAR 1.2 leak sites:
   - Regex patterns: SECRET_CANARY_VALUE, PII_CANARY_*, account numbers (PA),
     password=, token=, session=, passcode=
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,7 +68,7 @@ _BODY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(
             r'("(?:password|passcode|passwd|token|access_token|refresh_token'
-            r'|session|sessionId|session_id|secret|authorization|cookie'
+            r"|session|sessionId|session_id|secret|authorization|cookie"
             r'|x-csrf-token|apiKey|api_key|clientSecret|client_secret)"'
             r'\s*:\s*")([^"]+)(")',
             re.IGNORECASE,
@@ -82,7 +83,7 @@ _BODY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1" + REDACTED,
     ),
-    # Panama account numbers (10–16 digit sequences that look like bank accounts)
+    # Panama account numbers (10-16 digit sequences that look like bank accounts)
     (
         re.compile(r"\b(\d{4}[- ]?\d{4}[- ]?\d{4}(?:[- ]?\d{0,4})?)\b"),
         REDACTED,
@@ -196,10 +197,8 @@ class HARSanitizer:
                     try:
                         decoded = base64.b64decode(text).decode("utf-8", errors="replace")
                         redacted = self._redact_body_text(decoded)
-                        content["text"] = base64.b64encode(
-                            redacted.encode("utf-8")
-                        ).decode("ascii")
-                    except Exception:  # noqa: BLE001
+                        content["text"] = base64.b64encode(redacted.encode("utf-8")).decode("ascii")
+                    except Exception:
                         pass  # leave binary content untouched
             elif text:
                 content["text"] = self._redact_body_text(text)

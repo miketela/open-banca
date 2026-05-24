@@ -6,6 +6,7 @@ Covers:
 - Whitelisted helpers accepted
 - Expression application end-to-end
 """
+
 from __future__ import annotations
 
 import pytest
@@ -150,6 +151,7 @@ class TestApplyExpression:
 
     def test_normalize_amount(self) -> None:
         from decimal import Decimal
+
         result = apply_expression("normalize_amount('en_US')", "1,234.56")
         assert result == Decimal("1234.56")
 

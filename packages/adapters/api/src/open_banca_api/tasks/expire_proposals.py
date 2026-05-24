@@ -79,9 +79,7 @@ async def _signal_expired(temporal_client: Any, proposal_id: str) -> None:
         logger.info("Signalled remap_rejected for expired proposal %s", proposal_id)
     except Exception as exc:
         # Workflow may already be gone — log and continue
-        logger.warning(
-            "Could not signal expired proposal %s: %s", proposal_id, exc
-        )
+        logger.warning("Could not signal expired proposal %s: %s", proposal_id, exc)
 
 
 async def _expire_loop(temporal_client: Any | None, interval: int) -> None:

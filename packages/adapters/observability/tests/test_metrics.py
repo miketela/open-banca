@@ -2,6 +2,7 @@
 
 test_metrics_scrape_count: after a scrape completes, scrape_jobs_total increments.
 """
+
 from __future__ import annotations
 
 from opentelemetry.metrics import Meter

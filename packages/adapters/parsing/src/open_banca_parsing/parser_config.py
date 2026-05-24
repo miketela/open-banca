@@ -3,6 +3,7 @@
 Adapter-local rich schema. The domain ParserConfig (extra="allow") accepts the full
 JSON; the engine re-validates via this schema before execution.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -110,7 +111,9 @@ TransformSpec = (
 class ColumnMapEntry(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    target_field: str = Field(..., description="Canonical field name, e.g. date, amount, description")
+    target_field: str = Field(
+        ..., description="Canonical field name, e.g. date, amount, description"
+    )
     source: str = Field(..., description="Column header name or letter (A, B, C…)")
     transformations: list[TransformSpec] = Field(default_factory=list)
     required: bool = True
@@ -163,9 +166,7 @@ class SheetSpec(BaseModel):
         description="Maps cell address (e.g. B3) to canonical metadata field name",
     )
     column_map: list[ColumnMapEntry] = Field(..., min_length=1)
-    account_type_inference: AccountTypeInference = Field(
-        default_factory=AccountTypeInference
-    )
+    account_type_inference: AccountTypeInference = Field(default_factory=AccountTypeInference)
     id_strategy: IdStrategy = Field(default_factory=IdStrategy)
 
 

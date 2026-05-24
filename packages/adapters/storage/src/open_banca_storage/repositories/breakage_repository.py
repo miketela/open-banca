@@ -1,4 +1,5 @@
 """BreakageRepository — persist BreakageEvent to audit_log and enqueue webhook."""
+
 from __future__ import annotations
 
 import json

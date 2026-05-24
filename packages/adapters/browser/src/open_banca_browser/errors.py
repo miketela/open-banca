@@ -1,4 +1,5 @@
 """Custom exceptions for the Playwright scraper runner."""
+
 from __future__ import annotations
 
 

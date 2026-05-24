@@ -9,8 +9,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from open_banca_domain.entities.breakage_event import BreakageEvent
 
+from open_banca_domain.entities.breakage_event import BreakageEvent
 from open_banca_orchestrator.activities.judge import JudgeInput, JudgeResult, judge
 from open_banca_orchestrator.activities.parse_excel import TransactionRecord
 from open_banca_orchestrator.activities.validate import (
@@ -122,9 +122,7 @@ async def test_judge_activity_with_test_model(monkeypatch: pytest.MonkeyPatch) -
 
     result = await judge(inp)
     assert isinstance(result, JudgeResult)
-    assert result.route == "human_required", (
-        f"v1 HITL invariant violated: route={result.route!r}"
-    )
+    assert result.route == "human_required", f"v1 HITL invariant violated: route={result.route!r}"
 
 
 @pytest.mark.asyncio

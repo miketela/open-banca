@@ -1,4 +1,5 @@
 """download_file step executor."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -66,9 +67,7 @@ def execute_download_file(
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
-            raise StepTimeout(
-                f"download_file timeout for trigger {trigger_selector!r}"
-            ) from exc
+            raise StepTimeout(f"download_file timeout for trigger {trigger_selector!r}") from exc
         raise DownloadFailed(f"download_file failed: {exc}") from exc
 
 
@@ -76,9 +75,9 @@ def _validate_mime(data: bytes, expected_mime: str, filename: str) -> None:
     """Basic magic-byte MIME validation without external dependencies."""
     # Map common MIME types to their magic bytes
     magic_map: dict[str, bytes] = {
-        "application/vnd.ms-excel": b"\xd0\xcf\x11\xe0",        # OLE2 (xls)
+        "application/vnd.ms-excel": b"\xd0\xcf\x11\xe0",  # OLE2 (xls)
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": b"PK\x03\x04",  # xlsx (zip)
-        "text/csv": b"",        # no reliable magic; skip
+        "text/csv": b"",  # no reliable magic; skip
         "application/pdf": b"%PDF",
         "application/zip": b"PK\x03\x04",
     }

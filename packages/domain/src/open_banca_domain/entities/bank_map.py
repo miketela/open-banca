@@ -1,4 +1,5 @@
 """BankMap entity — versioned scrape map for a bank."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict

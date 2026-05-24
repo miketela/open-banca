@@ -32,11 +32,7 @@ def _compute_fingerprint(
     """
     desc_norm = " ".join(unicodedata.normalize("NFKC", description).split())
     canonical = (
-        f"{account_id}"
-        f"|{posted_at.isoformat()}"
-        f"|{value_at.isoformat()}"
-        f"|{amount!s}"
-        f"|{desc_norm}"
+        f"{account_id}|{posted_at.isoformat()}|{value_at.isoformat()}|{amount!s}|{desc_norm}"
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

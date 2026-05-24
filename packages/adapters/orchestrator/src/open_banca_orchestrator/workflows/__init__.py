@@ -22,9 +22,9 @@ from open_banca_orchestrator.workflows.scrape_job import (
 )
 
 __all__ = [
-    "ScrapeJobWorkflow",
-    "ScrapeJobInput",
-    "ScrapeJobResult",
     "MapBankWorkflow",
     "RemapBankWorkflow",
+    "ScrapeJobInput",
+    "ScrapeJobResult",
+    "ScrapeJobWorkflow",
 ]

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 # ── POST /webhooks/test ────────────────────────────────────────────────────────
 
+
 def test_webhooks_test_requires_auth(client: TestClient) -> None:
     """POST /webhooks/test must require Bearer token."""
     response = client.post("/webhooks/test", json={"event_type": "job.completed"})
@@ -99,6 +100,7 @@ def test_webhooks_test_all_7_event_types(
 
 # ── GET /webhooks/dlq ──────────────────────────────────────────────────────────
 
+
 def test_webhooks_dlq_requires_auth(client: TestClient) -> None:
     """GET /webhooks/dlq must require Bearer token."""
     response = client.get("/webhooks/dlq")
@@ -124,6 +126,7 @@ def test_webhooks_dlq_returns_list(
 
 
 # ── POST /webhooks/dlq/{id}/replay ─────────────────────────────────────────────
+
 
 def test_webhooks_dlq_replay_requires_auth(client: TestClient) -> None:
     """POST /webhooks/dlq/{id}/replay must require Bearer token."""

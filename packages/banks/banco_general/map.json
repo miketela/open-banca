@@ -1,170 +1,117 @@
 {
   "bank_id": "banco_general",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "schema_version": "1",
+  "signature": null,
   "steps": [
     {
-      "step_id": "navigate_homepage",
+      "step_id": "login_navigate",
       "action": "navigate",
-      "url": "https://www.bgeneral.com/",
+      "url": "https://www.bancogeneral.com",
       "wait_until": "domcontentloaded"
     },
     {
-      "step_id": "dismiss_cookie_banner",
-      "action": "click",
-      "selector": "a.cli_action_button",
-      "optional": true,
-      "force": true
-    },
-    {
-      "step_id": "open_banca_en_linea_dropdown",
-      "action": "click",
-      "selector": "button.dropbtn",
-      "nth": 0
-    },
-    {
-      "step_id": "wait_for_login_widget",
+      "step_id": "login_wait_form",
       "action": "wait_for_selector",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "#txtLoginD",
-      "state": "attached",
-      "timeout_ms": 20000
-    },
-    {
-      "step_id": "fill_username",
-      "action": "fill",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "#txtLoginD",
-      "value_ref": "<USERNAME>",
-      "trigger_blur": true
-    },
-    {
-      "step_id": "submit_username",
-      "action": "click",
-      "frame_selector": "#bel-desktop #inbank",
-      "selector": "button.btningresar"
-    },
-    {
-      "step_id": "navigate_zonasegura_portal",
-      "action": "navigate",
-      "url": "https://zonasegura.bgeneral.com/web/guest/home#!/login/username?username=<USERNAME>",
-      "wait_until": "domcontentloaded"
-    },
-    {
-      "step_id": "wait_for_security_question_page",
-      "action": "wait_for_selector",
-      "selector": "#answer",
-      "state": "attached",
-      "timeout_ms": 20000
-    },
-    {
-      "step_id": "answer_security_question_first_job_title",
-      "action": "prompt_user",
-      "selector": "#answer",
-      "question_selector": "p:has-text('?'), [class*='pregunta'], [class*='question']",
-      "question_wait_ms": 15000,
-      "field_key": "security_q_first_job_title",
-      "cache_answers": true,
-      "timeout_s": 240
-    },
-    {
-      "step_id": "submit_security_answer",
-      "action": "click",
-      "selector": "button:has-text('Validar'), button[type=submit]"
-    },
-    {
-      "step_id": "wait_for_password_field",
-      "action": "wait_for_selector",
-      "selector": "input[type=password]",
-      "state": "visible",
+      "selector": "[id*='user'], [id*='usuario'], input[type='text']:first-of-type",
       "timeout_ms": 15000
     },
     {
-      "step_id": "fill_password",
+      "step_id": "login_fill_username",
       "action": "fill",
-      "selector": "input[type=password]",
-      "value_ref": "<PASSWORD>",
-      "trigger_blur": true,
+      "selector": "[id*='user'], [id*='usuario'], input[type='text']:first-of-type",
+      "value_ref": "personal:username",
+      "sensitive": false
+    },
+    {
+      "step_id": "login_fill_password",
+      "action": "fill",
+      "selector": "[id*='pass'], [id*='clave'], input[type='password']",
+      "value_ref": "personal:password",
       "sensitive": true
     },
     {
-      "step_id": "submit_password",
+      "step_id": "login_submit",
       "action": "click",
-      "selector": "button:has-text('Validar'), button[type=submit], #btn_enter"
+      "selector": "button[type='submit'], input[type='submit'], [id*='login'], [id*='ingresar']"
     },
     {
-      "step_id": "wait_for_dashboard",
+      "step_id": "dashboard_wait",
       "action": "wait_for_selector",
-      "selector": "a[role=menuitem]",
-      "state": "visible",
+      "selector": "[id*='account'], [class*='account'], [id*='cuenta'], [class*='cuenta']",
       "timeout_ms": 20000
     },
     {
-      "step_id": "navigate_to_dashboard",
+      "step_id": "account_savings_navigate",
       "action": "navigate",
-      "url": "https://zonasegura.bgeneral.com/group/guest/dashboard",
-      "wait_until": "domcontentloaded"
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/cuentas/ahorros/",
+      "wait_until": "networkidle"
     },
     {
-      "step_id": "open_account_context_menu",
-      "action": "click",
-      "selector": "[aria-expanded=false] span.account-menu-trigger, div[aria-expanded=false]",
-      "nth": 0
+      "step_id": "account_savings_select_date_range",
+      "action": "select_date_range",
+      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
+      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
+      "months_back": 6
     },
     {
-      "step_id": "click_ver_movimientos",
-      "action": "click",
-      "selector": "a[href*='movimientos'], a[href*='detalle-de-cuenta']"
-    },
-    {
-      "step_id": "wait_for_transaction_history",
-      "action": "wait_for_selector",
-      "selector": "#tabMenu0",
-      "state": "visible",
-      "timeout_ms": 15000
-    },
-    {
-      "step_id": "click_ultimos_movimientos_tab",
-      "action": "click",
-      "selector": "#tabMenu0"
-    },
-    {
-      "step_id": "set_date_range_from",
-      "action": "fill",
-      "selector": "#dateOfTransaction0",
-      "value_ref": "<DATE_FROM>"
-    },
-    {
-      "step_id": "set_date_range_to",
-      "action": "fill",
-      "selector": "#dateOfTransaction1",
-      "value_ref": "<DATE_TO>"
-    },
-    {
-      "step_id": "search_transactions",
-      "action": "click",
-      "selector": "button[type=submit][role=button]"
-    },
-    {
-      "step_id": "wait_for_transactions_loaded",
-      "action": "wait_for_selector",
-      "selector": "label[aria-expanded]",
-      "state": "visible",
-      "timeout_ms": 15000
-    },
-    {
-      "step_id": "open_descargar_dropdown",
-      "action": "click",
-      "selector": "label[aria-expanded] em"
-    },
-    {
-      "step_id": "download_excel",
+      "step_id": "account_savings_download",
       "action": "download_file",
-      "trigger_selector": "a[href*='Excel'], .dropdown-menu a:nth-child(3)",
-      "expected_mime": "application/vnd.ms-excel",
-      "expected_extension": "xls",
-      "expected_content_type": "application/vnd.ms-excel",
-      "selector": "download.xls"
+      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
+      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    },
+    {
+      "step_id": "account_savings_wait_download",
+      "action": "wait_for_download",
+      "timeout_ms": 30000
+    },
+    {
+      "step_id": "account_checking_navigate",
+      "action": "navigate",
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/cuentas/corriente/",
+      "wait_until": "networkidle"
+    },
+    {
+      "step_id": "account_checking_select_date_range",
+      "action": "select_date_range",
+      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
+      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
+      "months_back": 6
+    },
+    {
+      "step_id": "account_checking_download",
+      "action": "download_file",
+      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
+      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    },
+    {
+      "step_id": "account_checking_wait_download",
+      "action": "wait_for_download",
+      "timeout_ms": 30000
+    },
+    {
+      "step_id": "account_credit_card_navigate",
+      "action": "navigate",
+      "url": "https://www.bancogeneral.com/personas/banca-en-linea/tarjetas/credito/",
+      "wait_until": "networkidle"
+    },
+    {
+      "step_id": "account_credit_card_select_date_range",
+      "action": "select_date_range",
+      "from_selector": "[id*='fecha_inicio'], [id*='from_date'], [name*='from']",
+      "to_selector": "[id*='fecha_fin'], [id*='to_date'], [name*='to']",
+      "months_back": 6
+    },
+    {
+      "step_id": "account_credit_card_download",
+      "action": "download_file",
+      "selector": "a[href*='xls'], a[href*='xlsx'], button[id*='excel'], button[id*='descargar']",
+      "expected_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    },
+    {
+      "step_id": "account_credit_card_wait_download",
+      "action": "wait_for_download",
+      "timeout_ms": 30000
     }
   ]
 }

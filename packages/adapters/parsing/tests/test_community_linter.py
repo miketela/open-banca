@@ -3,6 +3,7 @@
 All 14 rules are covered. Cosign calls are fully mocked.
 No real signing/verification happens here.
 """
+
 from __future__ import annotations
 
 import json
@@ -567,9 +568,7 @@ def test_linter_l11_l14_lookup_table_over_1mb(tmp_path: Path) -> None:
                         "source": "Categoria",
                         "required": False,
                         "on_missing": "null",
-                        "transformations": [
-                            {"helper": "lookup_table", "map": big_map_entries}
-                        ],
+                        "transformations": [{"helper": "lookup_table", "map": big_map_entries}],
                     }
                 ],
             }

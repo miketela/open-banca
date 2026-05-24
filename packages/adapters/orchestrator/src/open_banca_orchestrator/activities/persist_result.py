@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -50,7 +50,7 @@ class PersistResultActivity:
 
 
 @activity.defn(name="PersistResultActivity")
-async def persist_result(input: PersistResultInput) -> PersistResultResult:  # noqa: A002
+async def persist_result(input: PersistResultInput) -> PersistResultResult:
     """Persist scrape results to the encrypted SQLCipher storage.
 
     Uses ``SqliteJobStore.save_job()``, ``save_account()``, and
@@ -63,26 +63,32 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:  # n
         len(input.transactions),
     )
 
-    from open_banca_domain.entities.job import Job, JobMode, JobStatus  # noqa: PLC0415
-    from open_banca_domain.entities.transaction import Transaction  # noqa: PLC0415
-    from open_banca_storage.config import get_settings as get_storage_settings  # noqa: PLC0415
-    from open_banca_storage.connection import Connection  # noqa: PLC0415
-    from open_banca_storage.migrations import ensure_schema  # noqa: PLC0415
-    from open_banca_storage.repositories.job_store import SqliteJobStore  # noqa: PLC0415
+    from open_banca_domain.entities.job import Job, JobMode, JobStatus
+    from open_banca_domain.entities.transaction import Transaction
+    from open_banca_storage.config import get_settings as get_storage_settings
+    from open_banca_storage.connection import ConnectionPool, PassthroughKeyDerivation
+    from open_banca_storage.dedup.fingerprint import compute_fingerprint
+    from open_banca_storage.migrations import migrate
+    from open_banca_storage.repositories.job_store import SqliteJobStore
 
     passphrase = os.environ.get("OPEN_BANCA_MASTER_PASSPHRASE", "dev-insecure-passphrase")
     settings = get_storage_settings()
-    conn = Connection(db_path=settings.db_path, passphrase=passphrase)
-    ensure_schema(conn)
+    pool = ConnectionPool(
+        db_path=settings.open_banca_db_path,
+        passphrase=passphrase,
+        key_derivation=PassthroughKeyDerivation(),
+    )
+    conn = pool.get()
+    migrate(conn)
     store = SqliteJobStore(conn)
 
     now = datetime.now(tz=UTC)
     job = Job(
         id=input.job_id,
-        status=JobStatus.completed,
+        status=JobStatus.COMPLETED,
         bank=input.bank_id,
         credential_ref="",
-        mode=JobMode.full_historical,
+        mode=JobMode.FULL,
         created_at=now,
         updated_at=now,
     )
@@ -90,22 +96,24 @@ async def persist_result(input: PersistResultInput) -> PersistResultResult:  # n
 
     tx_count = 0
     for txn in input.transactions:
+        posted_at = datetime.fromisoformat(txn.date).replace(tzinfo=UTC)
+        amount = Decimal(txn.amount)
         tx = Transaction(
             id=txn.raw_id or str(uuid.uuid4()),
             account_id=txn.account_id,
-            posted_at=date.fromisoformat(txn.date),
-            value_at=date.fromisoformat(txn.date),
-            amount=Decimal(txn.amount),
+            posted_at=posted_at,
+            value_at=posted_at,
+            amount=amount,
             currency=txn.currency,
             description=txn.description,
-            fingerprint_hash=txn.fingerprint_hash or "",
+            fingerprint_hash=compute_fingerprint(
+                txn.account_id, posted_at, posted_at, amount, txn.description
+            ),
         )
         store.save_transaction_with_job(tx, input.job_id)
         tx_count += 1
 
-    activity.logger.info(
-        "persist complete: job_id=%s transactions=%d", input.job_id, tx_count
-    )
+    activity.logger.info("persist complete: job_id=%s transactions=%d", input.job_id, tx_count)
 
     return PersistResultResult(
         persisted_accounts=len(input.accounts),

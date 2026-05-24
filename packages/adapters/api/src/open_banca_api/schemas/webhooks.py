@@ -1,4 +1,5 @@
 """Schemas for webhook-related endpoints."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict

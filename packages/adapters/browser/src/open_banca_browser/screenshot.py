@@ -5,6 +5,7 @@ ADR-0020 is not yet written; this implements a conservative minimal strategy:
   attribute via JavaScript injection.
 - DOM excerpts strip attribute values for sensitive inputs.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -83,7 +84,7 @@ def dom_excerpt(page: object, selector: str | None = None) -> str:
     except Exception as exc:
         return f"<dom_excerpt_error: {exc}>"
 
-    redacted = _VALUE_ATTR_RE.sub(r'\1\2[REDACTED]\3', raw)
+    redacted = _VALUE_ATTR_RE.sub(r"\1\2[REDACTED]\3", raw)
 
     encoded = redacted.encode("utf-8")
     if len(encoded) > _DOM_SNAPSHOT_MAX_BYTES:

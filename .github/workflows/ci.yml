@@ -84,9 +84,56 @@ jobs:
         run: docker compose -f docker-compose.dev.yml config --quiet
 
       - name: Validate docker-compose.yml
+        env:
+          # Placeholders solo para `docker compose config` (sintaxis/interpolación).
+          # Producción sigue exigiendo valores reales vía .env (ver .env.example).
+          TEMPORAL_DB_PASSWORD: ci-validate-placeholder
+          OPEN_BANCA_MASTER_PASSPHRASE: ci-validate-placeholder
+          WEBHOOK_HMAC_SECRET: ci-validate-placeholder
+          API_KEY: ci-validate-placeholder
+          ANTHROPIC_API_KEY: ci-validate-placeholder
         run: |
           if [ -f docker-compose.yml ]; then
             docker compose -f docker-compose.yml config --quiet
           else
             echo "docker-compose.yml not found, skipping."
           fi
+
+  compose-smoke:
+    name: Docker Compose smoke (optional)
+    runs-on: ubuntu-latest
+    needs: lint-type-test
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Run scripts/smoke_compose.sh when Docker is available
+        env:
+          TEMPORAL_DB_PASSWORD: ci-smoke-temporal-db
+          OPEN_BANCA_MASTER_PASSPHRASE: ci-smoke-master-passphrase-32chars-min_
+          WEBHOOK_HMAC_SECRET: a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
+          API_KEY: ci-smoke-api-key
+          ANTHROPIC_API_KEY: ci-smoke-anthropic-placeholder
+        run: |
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "Docker CLI not installed — skipping compose smoke"
+            exit 0
+          fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "Docker daemon unavailable — skipping compose smoke"
+            exit 0
+          fi
+          bash scripts/smoke_compose.sh

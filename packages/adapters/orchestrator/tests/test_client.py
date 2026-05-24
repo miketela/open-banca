@@ -45,9 +45,7 @@ async def test_get_client_without_explicit_settings() -> None:
         import os  # noqa: PLC0415
 
         original = os.environ.get("OPEN_BANCA_TEMPORAL_ADDRESS")
-        os.environ["OPEN_BANCA_TEMPORAL_ADDRESS"] = (
-            env.client.service_client.config.target_host
-        )
+        os.environ["OPEN_BANCA_TEMPORAL_ADDRESS"] = env.client.service_client.config.target_host
         try:
             client = await get_client()
             assert isinstance(client, Client)

@@ -1,4 +1,5 @@
 """ApplyRemapProposal use case — approve or reject a remap proposal."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

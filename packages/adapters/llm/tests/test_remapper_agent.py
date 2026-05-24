@@ -71,9 +71,7 @@ def _make_patch_json(
     rationale: str = "Selector changed from #submit to #btn-submit",
 ) -> str:
     if new_steps is None:
-        new_steps = [
-            {"step_id": "s3-fixed", "action": "click", "target": "#btn-submit"}
-        ]
+        new_steps = [{"step_id": "s3-fixed", "action": "click", "target": "#btn-submit"}]
     return json.dumps(
         {
             "target_step_index": step_index,

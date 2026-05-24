@@ -1,4 +1,5 @@
 """Tests for Transaction entity — Decimal precision, fingerprint, dedup fields."""
+
 from __future__ import annotations
 
 import hashlib

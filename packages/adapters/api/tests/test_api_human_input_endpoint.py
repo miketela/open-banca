@@ -10,12 +10,12 @@ TDD coverage:
 7. Signal failure (Temporal down) → 503.
 8. persist=false — signal still sent, no cache write attempted.
 """
+
 from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -116,12 +116,14 @@ class _StubTemporalAdapter:
     ) -> None:
         if self._signal_raises is not None:
             raise self._signal_raises
-        self.signal_calls.append({
-            "job_id": job_id,
-            "field_key": field_key,
-            "answer": answer,
-            "persist": persist,
-        })
+        self.signal_calls.append(
+            {
+                "job_id": job_id,
+                "field_key": field_key,
+                "answer": answer,
+                "persist": persist,
+            }
+        )
 
     async def async_signal_otp_confirmed(self, job_id: str) -> None:
         pass

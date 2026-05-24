@@ -1,4 +1,5 @@
 """Transaction entity — canonical representation of a bank movement."""
+
 from __future__ import annotations
 
 from datetime import datetime

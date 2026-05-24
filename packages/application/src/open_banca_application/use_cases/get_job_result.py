@@ -1,4 +1,5 @@
 """GetJobResult use case — load a completed job with its transactions."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

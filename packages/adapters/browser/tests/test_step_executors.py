@@ -1,4 +1,5 @@
 """Unit tests for all 9 step executors using mock Page objects."""
+
 from __future__ import annotations
 
 import pathlib
@@ -33,6 +34,7 @@ def _step(**extra: object) -> StepSpec:
 
 # ─────────────────────────────── navigate ────────────────────────────────────
 
+
 class TestNavigate:
     def test_success(self) -> None:
         page = MagicMock()
@@ -41,9 +43,7 @@ class TestNavigate:
         page.goto.return_value = response
         step = _step(url="https://example.com", wait_until="load")
         execute_navigate(page, step)
-        page.goto.assert_called_once_with(
-            "https://example.com", wait_until="load", timeout=30_000
-        )
+        page.goto.assert_called_once_with("https://example.com", wait_until="load", timeout=30_000)
 
     def test_http_error_raises(self) -> None:
         page = MagicMock()
@@ -88,6 +88,7 @@ class TestNavigate:
 
 # ─────────────────────────────── click ───────────────────────────────────────
 
+
 class TestClick:
     def _make_page(self, count: int = 1) -> MagicMock:
         page = MagicMock()
@@ -127,14 +128,13 @@ class TestClick:
 
 # ─────────────────────────────── wait_for_selector ───────────────────────────
 
+
 class TestWaitForSelector:
     def test_success(self) -> None:
         page = MagicMock()
         step = _step(selector="#modal", state="visible", timeout_ms=5000)
         execute_wait_for_selector(page, step)
-        page.wait_for_selector.assert_called_once_with(
-            "#modal", state="visible", timeout=5000
-        )
+        page.wait_for_selector.assert_called_once_with("#modal", state="visible", timeout=5000)
 
     def test_timeout_raises(self) -> None:
         page = MagicMock()
@@ -159,6 +159,7 @@ class TestWaitForSelector:
 
 
 # ─────────────────────────────── assert_text ─────────────────────────────────
+
 
 class TestAssertText:
     def _make_page(self, text: str = "Hello World", count: int = 1) -> MagicMock:
@@ -204,6 +205,7 @@ class TestAssertText:
 
 
 # ─────────────────────────────── extract_table ───────────────────────────────
+
 
 class TestExtractTable:
     def _make_table_page(
@@ -278,6 +280,7 @@ class TestExtractTable:
 
 # ─────────────────────────────── select_date_range ───────────────────────────
 
+
 class TestSelectDateRange:
     def _make_page(self, count: int = 1) -> MagicMock:
         page = MagicMock()
@@ -325,6 +328,7 @@ class TestSelectDateRange:
 
 
 # ─────────────────────────────── download helpers ────────────────────────────
+
 
 class TestWaitForDownload:
     def test_success_appends_bytes(self, tmp_path: pathlib.Path) -> None:
@@ -449,6 +453,7 @@ class TestDownloadFile:
 
 # ─────────────────────────────── helper builders ─────────────────────────────
 
+
 def _mock_cell(text: str) -> MagicMock:
     cell = MagicMock()
     cell.inner_text.return_value = text
@@ -472,9 +477,7 @@ def _make_rows(rows: list[list[str]]) -> MagicMock:
     return rows_locator
 
 
-def _make_table_page_full(
-    headers: list[str], rows_data: list[list[str]]
-) -> MagicMock:
+def _make_table_page_full(headers: list[str], rows_data: list[list[str]]) -> MagicMock:
     """Build a mock page with a fully functional table."""
     page = MagicMock()
     table_locator = MagicMock()

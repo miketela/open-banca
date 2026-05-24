@@ -27,6 +27,7 @@ handler so that ``RedactFilter`` scrubs every payload before it is serialised
 and sent to the Langfuse server.  No canary or PII values should appear in
 Langfuse traces.
 """
+
 from __future__ import annotations
 
 import logging

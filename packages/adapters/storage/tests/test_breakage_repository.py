@@ -6,6 +6,7 @@ TDD coverage (task-10):
 - test_webhook_outbox_enqueue: emit → webhook_outbox row with event_type='job.failed'
   and payload containing job_id.
 """
+
 from __future__ import annotations
 
 import json
@@ -123,6 +124,7 @@ def test_both_rows_written_atomically(conn_with_schema, repo, sample_event) -> N
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _insert_stub_job(conn, job_id: str) -> None:  # type: ignore[no-untyped-def]
     """Insert a minimal jobs row to satisfy the FK constraint on webhook_outbox."""

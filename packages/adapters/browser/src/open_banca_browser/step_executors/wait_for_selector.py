@@ -1,4 +1,5 @@
 """wait_for_selector step executor."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -45,9 +46,5 @@ def execute_wait_for_selector(page: Any, step: StepSpec) -> None:
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg:
-            raise StepTimeout(
-                f"wait_for_selector timeout: {selector!r} state={state}"
-            ) from exc
-        raise SelectorNotFound(
-            f"wait_for_selector: {selector!r} not found"
-        ) from exc
+            raise StepTimeout(f"wait_for_selector timeout: {selector!r} state={state}") from exc
+        raise SelectorNotFound(f"wait_for_selector: {selector!r} not found") from exc

@@ -132,7 +132,9 @@ def apply_patch_to_disk(
 
     # Splice: replace the single step at target_step_index with new_steps
     steps_replaced = 1 if target_step_index < len(steps) else 0
-    new_step_list = steps[:target_step_index] + list(new_steps) + steps[target_step_index + steps_replaced:]
+    new_step_list = (
+        steps[:target_step_index] + list(new_steps) + steps[target_step_index + steps_replaced :]
+    )
     data["steps"] = new_step_list
 
     bumped_version = new_version or _bump_version(old_version)

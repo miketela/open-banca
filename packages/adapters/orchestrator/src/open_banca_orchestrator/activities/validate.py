@@ -45,12 +45,8 @@ class ValidateInput(BaseModel):
 
     job_id: str = Field(description="Unique job identifier")
     account_id: str = Field(description="Account the transactions belong to")
-    transactions: list[TransactionRecord] = Field(
-        description="Parsed transactions to validate"
-    )
-    payload_hash: str = Field(
-        description="SHA-256 hash of the payload for idempotency"
-    )
+    transactions: list[TransactionRecord] = Field(description="Parsed transactions to validate")
+    payload_hash: str = Field(description="SHA-256 hash of the payload for idempotency")
     reported_balance: str | None = Field(
         default=None,
         description="Reported balance as decimal string, for heuristic balance check",
@@ -86,13 +82,14 @@ def _get_validator_model(override: Any) -> Any:
     if override is not None:
         return override
     if os.environ.get("OPEN_BANCA_TEST_MODEL") == "1":
-        from pydantic_ai.models.test import TestModel  # noqa: PLC0415
+        from pydantic_ai.models.test import TestModel
+
         return TestModel()
     return None  # ValidatorAgent will use its default (deepseek)
 
 
 @activity.defn(name="ValidateActivity")
-async def validate(input: ValidateInput) -> ValidateResult:  # noqa: A002
+async def validate(input: ValidateInput) -> ValidateResult:
     """Validate normalized transactions using DeepSeek V3 Validator agent.
 
     Heuristic checks run first (balance mismatch, duplicates, currency mismatch,
@@ -121,7 +118,7 @@ async def validate(input: ValidateInput) -> ValidateResult:  # noqa: A002
             breakage_detected=True,
         )
 
-    from open_banca_llm.validator.agent import (  # noqa: PLC0415
+    from open_banca_llm.validator.agent import (
         CostCapExceeded,
         TransactionInput,
         ValidationVerdict,
@@ -141,9 +138,7 @@ async def validate(input: ValidateInput) -> ValidateResult:  # noqa: A002
         for t in input.transactions
     ]
 
-    reported_balance = (
-        Decimal(input.reported_balance) if input.reported_balance else None
-    )
+    reported_balance = Decimal(input.reported_balance) if input.reported_balance else None
 
     model = _get_validator_model(None)
     agent = ValidatorAgent(model=model)
@@ -151,9 +146,7 @@ async def validate(input: ValidateInput) -> ValidateResult:  # noqa: A002
     try:
         report = await agent.validate(txn_inputs, reported_balance=reported_balance)
     except CostCapExceeded as exc:
-        activity.logger.warning(
-            "ValidateActivity: cost cap exceeded: %s", exc
-        )
+        activity.logger.warning("ValidateActivity: cost cap exceeded: %s", exc)
         return ValidateResult(
             status=ValidationStatus.failed,
             issues=[

@@ -15,6 +15,7 @@ Usage (from within a Temporal activity or background task):
     gc = SandboxGarbageCollector(runner=DockerSandboxRunner())
     killed = gc.collect(active_job_ids={"job-abc", "job-xyz"})
 """
+
 from __future__ import annotations
 
 import logging
@@ -121,16 +122,12 @@ class SandboxGarbageCollector:
                 },
             )
             if resp.status_code != 200:
-                logger.warning(
-                    "sandbox.gc: failed to list containers: HTTP %s", resp.status_code
-                )
+                logger.warning("sandbox.gc: failed to list containers: HTTP %s", resp.status_code)
                 return []
             containers: list[dict] = resp.json()  # type: ignore[type-arg]
             # Filter to sandbox component only
             return [
-                c
-                for c in containers
-                if (c.get("Labels") or {}).get(_COMPONENT_LABEL) == "sandbox"
+                c for c in containers if (c.get("Labels") or {}).get(_COMPONENT_LABEL) == "sandbox"
             ]
         except httpx.HTTPError as exc:
             logger.warning("sandbox.gc: HTTP error listing containers: %s", exc)
@@ -143,6 +140,4 @@ class SandboxGarbageCollector:
                 params={"force": "true"},
             )
         except httpx.HTTPError as exc:
-            logger.warning(
-                "sandbox.gc: failed to kill container %s: %s", container_id, exc
-            )
+            logger.warning("sandbox.gc: failed to kill container %s: %s", container_id, exc)

@@ -10,6 +10,7 @@ dependencies = [
     "open-banca-storage",
     "open-banca-application",
     "open-banca-domain",
+    "open-banca-browser",
 ]
 
 [project.scripts]
@@ -19,6 +20,7 @@ open-banca = "open_banca_cli.main:app"
 open-banca-storage = { workspace = true }
 open-banca-application = { workspace = true }
 open-banca-domain = { workspace = true }
+open-banca-browser = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

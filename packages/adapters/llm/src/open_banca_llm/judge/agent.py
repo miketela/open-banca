@@ -18,15 +18,15 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 
-from open_banca_domain.entities.breakage_event import BreakageEvent
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
+from open_banca_domain.entities.breakage_event import BreakageEvent
+
 # ---------------------------------------------------------------------------
 # Cost helpers — delegated to unified router
 # ---------------------------------------------------------------------------
-
 from open_banca_llm.router import compute_cost as _router_compute_cost
 from open_banca_llm.router import get_cost_cap as _router_get_cost_cap
 from open_banca_llm.router import resolve_model as _router_resolve_model
@@ -45,7 +45,9 @@ class CostCapExceeded(Exception):
         self.cap = cap
 
 
-def _compute_cost(input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat") -> Decimal:
+def _compute_cost(
+    input_tokens: int, output_tokens: int, model: str = "deepseek/deepseek-chat"
+) -> Decimal:
     """Compute USD cost via the unified router."""
     return _router_compute_cost(model, input_tokens=input_tokens, output_tokens=output_tokens)
 
@@ -112,18 +114,12 @@ class JudgeDecision(BaseModel):
     confidence and risk are for telemetry/dashboards only.
     """
 
-    route: JudgeRoute = Field(
-        description="Routing decision — v1 always human_required"
-    )
+    route: JudgeRoute = Field(description="Routing decision — v1 always human_required")
     confidence: Annotated[float, Field(ge=0.0, le=1.0)] = Field(
         description="Agent confidence 0-1 (telemetry only in v1)"
     )
-    risk: JudgeRisk = Field(
-        description="Risk assessment (telemetry only in v1)"
-    )
-    rationale: str = Field(
-        description="Human-readable explanation of the decision"
-    )
+    risk: JudgeRisk = Field(description="Risk assessment (telemetry only in v1)")
+    rationale: str = Field(description="Human-readable explanation of the decision")
 
 
 # LLM output schema — what DeepSeek returns (before v1 override)

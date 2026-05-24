@@ -34,8 +34,7 @@ class BudgetExceeded(GuardrailError):
         self.cap_usd = cap_usd
         self.op_type = op_type
         super().__init__(
-            f"Job {job_id} cost ${consumed_usd:.4f} exceeds cap ${cap_usd:.2f} "
-            f"for op={op_type}"
+            f"Job {job_id} cost ${consumed_usd:.4f} exceeds cap ${cap_usd:.2f} for op={op_type}"
         )
 
 

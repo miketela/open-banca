@@ -16,12 +16,12 @@ Usage (sync Playwright)::
         # responses served from HAR
         browser.close()
 """
+
 from __future__ import annotations
 
 import base64
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +47,7 @@ class HARReplay:
         *,
         fallback_passthrough: bool = False,
     ) -> None:
-        self._entries: list[dict[str, Any]] = (
-            har.get("log", {}).get("entries", [])
-        )
+        self._entries: list[dict[str, Any]] = har.get("log", {}).get("entries", [])
         self._url_pattern = url_pattern
         self._fallback_passthrough = fallback_passthrough
         # Pre-index: strip query strings for fast lookup
@@ -64,7 +62,7 @@ class HARReplay:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_file(cls, path: Path, **kwargs: Any) -> "HARReplay":
+    def from_file(cls, path: Path, **kwargs: Any) -> HARReplay:
         """Load a HAR file and return a HARReplay instance."""
         with path.open(encoding="utf-8") as fh:
             har: dict[str, Any] = json.load(fh)
@@ -130,9 +128,7 @@ class HARReplay:
     # Entry matching
     # ------------------------------------------------------------------
 
-    def _find_entry(
-        self, request_url: str, method: str
-    ) -> dict[str, Any] | None:
+    def _find_entry(self, request_url: str, method: str) -> dict[str, Any] | None:
         """Find the best matching HAR entry for the given URL and method.
 
         Matching strategy (in order):
@@ -187,5 +183,5 @@ def _url_path(url: str) -> str:
         from urllib.parse import urlparse
 
         return urlparse(url).path
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""

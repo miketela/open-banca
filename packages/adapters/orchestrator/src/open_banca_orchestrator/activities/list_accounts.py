@@ -50,7 +50,7 @@ class ListAccountsActivity:
 
 
 @activity.defn(name="ListAccountsActivity")
-async def list_accounts(input: ListAccountsInput) -> ListAccountsResult:  # noqa: A002
+async def list_accounts(input: ListAccountsInput) -> ListAccountsResult:
     """Discover available accounts for a bank from map.json.
 
     Resolution order:
@@ -68,7 +68,8 @@ async def list_accounts(input: ListAccountsInput) -> ListAccountsResult:  # noqa
             if accounts:
                 activity.logger.info(
                     "found %d accounts in map.json for bank_id=%s",
-                    len(accounts), input.bank_id,
+                    len(accounts),
+                    input.bank_id,
                 )
                 return ListAccountsResult(accounts=accounts)
         except Exception as exc:
@@ -76,12 +77,8 @@ async def list_accounts(input: ListAccountsInput) -> ListAccountsResult:  # noqa
                 "failed to parse map.json for bank_id=%s: %s", input.bank_id, exc
             )
 
-    activity.logger.info(
-        "no static account list for bank_id=%s — using default", input.bank_id
-    )
-    return ListAccountsResult(
-        accounts=[AccountInfo(account_id="default-account", label="Default")]
-    )
+    activity.logger.info("no static account list for bank_id=%s — using default", input.bank_id)
+    return ListAccountsResult(accounts=[AccountInfo(account_id="default-account", label="Default")])
 
 
 def _extract_accounts(data: dict, bank_id: str) -> list[AccountInfo]:

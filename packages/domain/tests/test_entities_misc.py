@@ -1,4 +1,5 @@
 """Tests for BankMap, Credential, BreakageEvent, RemapProposal, WebhookEvent."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

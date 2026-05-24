@@ -169,19 +169,74 @@ Notas de implementación:
 
 ## Primer arranque
 
-Secuencia esperada:
+Procedimiento local recomendado (HU02, issue #8): máquina con Docker instalado y daemon activo; variables en `.env` reales (no placeholders). El repositorio incluye `.env.example` como plantilla — **no** commitear `.env`.
 
-1. Operador clona repo + edita `.env` (API keys LLM, master passphrase, webhook HMAC secret).
-2. Completar checklist M-1..M-7 (swap desactivado, swappiness=0, etc.).
-3. `docker compose build api && docker compose build sandbox-runner`.
-4. `docker compose up -d`.
-5. `api` levanta: detecta DB no existente, prompta creación → cifra con master passphrase, corre migraciones, registra usuario admin con `API_KEY`.
-6. `temporal` y `postgres-temporal` se inicializan, namespace creado.
-7. `temporal-worker` registra activities/workflows, queda listo en task queue.
-8. Registrar credenciales del banco (elige una opción):
-   - **API:** `POST /credentials` con Bearer auth (ver §Autenticación y credenciales).
-   - **CLI:** `docker compose exec api uv run open-banca register-credentials --bank banco_general`
-9. Primer `POST /scrape` con `credentials` = `credential_ref` devuelto → flujo descrito en docs.
+### 1) Secretos y `.env`
+
+Desde la raíz del repo:
+
+```bash
+./scripts/bootstrap_env.sh
+```
+
+Qué hace el script: si no existe `.env`, copia `.env.example` → `.env` (si ya hay `.env`, **no** lo sobrescribe). Rellena con `secrets` de Python los valores que sigan en placeholder para `OPEN_BANCA_MASTER_PASSPHRASE`, `WEBHOOK_HMAC_SECRET`, `API_KEY` y `TEMPORAL_DB_PASSWORD` (no pisa valores que el operador ya hubiera definido). Después **debes** editar `.env` y poner una `ANTHROPIC_API_KEY` válida (formato `sk-ant-...`); el worker la exige en compose.
+
+Otros campos útiles: `DEEPSEEK_API_KEY` (opcional), `OPEN_BANCA_API_PORT` (default `8080`), modelos `OPEN_BANCA_MAPPER_MODEL` / `OPEN_BANCA_REMAPPER_MODEL` / `OPEN_BANCA_VALIDATOR_MODEL` / `OPEN_BANCA_JUDGE_MODEL` si quieres overrides. El secreto HMAC para webhooks es **`WEBHOOK_HMAC_SECRET`** (no existe `OPEN_BANCA_WEBHOOK_SECRET`).
+
+### 2) Checklist de memoria (M-1 a M-7)
+
+Antes del primer `docker compose up` en un host tipo producción, completar la tabla del checklist de seguridad de memoria más arriba en este documento.
+
+### 3) Build e imagenes auxiliares
+
+```bash
+docker compose build api
+docker compose build sandbox-runner
+```
+
+(`api` y `temporal-worker` comparten imagen `open-banca:latest`; sandbox es imagen separada.)
+
+### 4) Arranque escalonado (dependencias)
+
+Evita condiciones de carrera entre Postgres, Temporal y el proxy de Docker:
+
+```bash
+docker compose up -d postgres-temporal
+# Esperar healthy: docker compose ps postgres-temporal
+docker compose up -d temporal-server
+docker compose up -d docker-socket-proxy
+docker compose up -d api temporal-worker
+```
+
+Comprueba estado: `docker compose ps` — servicios con healthcheck deberían pasar a `healthy` cuando terminen de iniciar.
+
+### 5) Verificación rápida
+
+Sustituye el puerto si definiste `OPEN_BANCA_API_PORT` distinto de `8080` (el smoke script `scripts/smoke_compose.sh` usa la misma variable vía `API_PORT`):
+
+```bash
+curl -fsS "http://localhost:${OPEN_BANCA_API_PORT:-8080}/healthz"
+curl -fsS "http://localhost:${OPEN_BANCA_API_PORT:-8080}/health"
+```
+
+**Temporal Web UI** no forma parte del perfil por defecto. Con el profile `ui` el servicio publica **`TEMPORAL_UI_PORT`** hacia el host (por defecto **8088**, ver `.env.example`), no el 8233 clásico:
+
+```bash
+docker compose --profile ui up -d temporal-ui
+# UI: http://localhost:${TEMPORAL_UI_PORT:-8088}
+```
+
+En logs del worker debe aparecer el mensaje `worker started` cuando el proceso quedó registrado contra Temporal:
+
+```bash
+docker compose logs temporal-worker --tail 50 | grep "worker started"
+```
+
+### 6) Post arranque operativo
+
+1. `api` puede inicializar DB cifrada con la passphrase maestra, migraciones y credenciales según tu flujo.
+2. `temporal-server` y `postgres-temporal` inicializan el backend; el worker queda en la task queue configurada (`TASK_QUEUE`, default `open-banca-main`).
+3. Primeras llamadas API: `POST /credentials`, `POST /scrape`, etc. (ver §Autenticación y credenciales).
 
 ## Autenticación y credenciales
 
@@ -231,16 +286,19 @@ curl -X POST http://localhost:8080/scrape \
 
 En producción Docker, el servicio `api` usa puerto **8080** (`docker-compose.yml`).
 
-Health endpoints:
+Endpoints de salud:
 
 - `GET /healthz` — liveness simple.
-- `GET /readyz` — checa conexión a Temporal + DB desbloqueada + worker registrado.
+- `GET /health` — estado con `status: ok` (útil para comprobaciones tipo load balancer).
+- `GET /readyz` — readiness (Temporal + DB desbloqueada + worker registrado, según implementación).
 
-Smoke test automatizado (valida config + healthchecks + endpoints):
+### Smoke automatizado (operador / CI con Docker)
 
 ```bash
 bash scripts/smoke_compose.sh
 ```
+
+Para depurar sin bajar el stack al terminar el script: `KEEP_UP=1 bash scripts/smoke_compose.sh`.
 
 ## Verificación post-deploy: docker-socket-proxy (REQ-018, obligatorio)
 

@@ -11,6 +11,9 @@ Usage::
 
     # Live mapping (requires ANTHROPIC_API_KEY + running Chromium):
     OPEN_BANCA_LIVE_MAPPER=1 open-banca run-mapper --bank banco_general --credential personal
+
+    # Live + raw HAR (sanitized automatically after the run):
+    OPEN_BANCA_LIVE_MAPPER=1 open-banca run-mapper --bank banco_general --credential personal --capture-har
 """
 
 from __future__ import annotations
@@ -57,6 +60,37 @@ def _find_repo_root() -> Path:
     return here
 
 
+def _har_raw_dir(repo_root: Path, bank: str) -> Path:
+    return (repo_root / f"packages/banks/{bank}/fixtures/har/raw").resolve()
+
+
+def _har_raw_path(repo_root: Path, bank: str, override: Path | None) -> Path:
+    if override is not None:
+        path = override if override.is_absolute() else repo_root / override
+        return path.resolve()
+    return _har_raw_dir(repo_root, bank) / "mapper_run.har"
+
+
+def _har_sanitized_path(repo_root: Path, bank: str) -> Path:
+    return repo_root / f"packages/banks/{bank}/fixtures/har/sanitized/mapper_run.har"
+
+
+def _ensure_har_path_under_raw_dir(repo_root: Path, bank: str, har_path: Path) -> None:
+    """Raw HAR must live under fixtures/har/raw/ (gitignored) to avoid accidental commits."""
+    raw_dir = _har_raw_dir(repo_root, bank)
+    resolved = har_path.resolve()
+    try:
+        resolved.relative_to(raw_dir)
+    except ValueError as exc:
+        console.print(
+            "[bold red]Error: --capture-har-path must be inside[/bold red]\n"
+            f"  {raw_dir}\n"
+            f"  Got: {resolved}\n"
+            "  Paths outside fixtures/har/raw/ are not gitignored and may contain live credentials."
+        )
+        raise typer.Exit(code=1) from exc
+
+
 def run_mapper(
     bank: Annotated[
         str,
@@ -76,20 +110,29 @@ def run_mapper(
             help="Print invocation plan without executing (default: auto-detected from env)",
         ),
     ] = False,
-    cost_cap_usd: Annotated[
-        float,
+    capture_har: Annotated[
+        bool,
         typer.Option(
-            "--cost-cap-usd",
-            help="Max LLM spend for this mapper run (USD)",
+            "--capture-har",
+            help="Live: record raw HAR under packages/banks/<bank>/fixtures/har/raw/; "
+            "then write sanitized fixtures/har/sanitized/mapper_run.har.",
         ),
-    ] = _COST_CAP_USD,
-    wallclock_cap_s: Annotated[
-        float,
+    ] = False,
+    capture_har_path: Annotated[
+        Path | None,
         typer.Option(
-            "--wallclock-cap-s",
-            help="Max wallclock time for this mapper run (seconds)",
+            "--capture-har-path",
+            help="Override raw HAR filename under fixtures/har/raw/ (implies capture when set).",
+            path_type=Path,
         ),
-    ] = _WALLCLOCK_SECONDS,
+    ] = None,
+    keep_raw_har: Annotated[
+        bool,
+        typer.Option(
+            "--keep-raw",
+            help="After sanitizing, keep the raw HAR on disk (default: delete raw after sanitize).",
+        ),
+    ] = False,
 ) -> None:
     """Run the MapperAgent to produce a BankMap for BANK.
 
@@ -122,8 +165,23 @@ def run_mapper(
     map_output_rel = _BANK_MAP_OUTPUT.get(bank, f"packages/banks/{bank}/map.json")
     map_output_path = repo_root / map_output_rel
 
+    want_har = capture_har or capture_har_path is not None
+    har_raw_path: Path | None = None
+    har_sanitized_path: Path | None = None
+    if want_har:
+        har_raw_path = _har_raw_path(repo_root, bank, capture_har_path)
+        _ensure_har_path_under_raw_dir(repo_root, bank, har_raw_path)
+        har_sanitized_path = _har_sanitized_path(repo_root, bank)
+
     if not live_mode:
-        _print_dry_run_plan(bank, credential, bank_url, map_output_path)
+        _print_dry_run_plan(
+            bank,
+            credential,
+            bank_url,
+            map_output_path,
+            har_raw_path=har_raw_path,
+            har_sanitized_path=har_sanitized_path,
+        )
         raise typer.Exit(code=0)
 
     # ── Live mode ────────────────────────────────────────────────────────────
@@ -141,13 +199,20 @@ def run_mapper(
             f"credential: {credential}\n"
             f"start_url : {bank_url}\n"
             f"output    : {map_output_path}\n"
-            f"cost_cap  : ${cost_cap_usd:.2f}\n"
-            f"wallclock : {int(wallclock_cap_s)}s",
+            f"cost_cap  : ${_COST_CAP_USD:.2f}\n"
+            f"wallclock : {int(_WALLCLOCK_SECONDS)}s",
             title="open-banca run-mapper",
         )
     )
 
-    bank_map_dict = asyncio.run(_run_live(bank, credential, bank_url, cost_cap_usd=cost_cap_usd, wallclock_cap_seconds=wallclock_cap_s))
+    bank_map_dict = asyncio.run(
+        _run_live(
+            bank,
+            credential,
+            bank_url,
+            har_output_path=har_raw_path,
+        )
+    )
 
     # Write output
     map_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,14 +226,29 @@ def run_mapper(
         "then POST /scrape when ready."
     )
 
+    if want_har and har_raw_path is not None:
+        if har_raw_path.exists() and har_sanitized_path is not None:
+            from open_banca_browser.har.sanitize import HARSanitizer
+
+            HARSanitizer().sanitize_file(har_raw_path, har_sanitized_path)
+            console.print(f"\n[green]Sanitized HAR written:[/green] {har_sanitized_path}")
+            if not keep_raw_har:
+                har_raw_path.unlink()
+                console.print(
+                    f"[dim]Raw HAR removed (use --keep-raw to retain for debug): {har_raw_path}[/dim]"
+                )
+        else:
+            console.print(
+                f"[yellow]Warning: raw HAR not found at {har_raw_path} — skip sanitize.[/yellow]"
+            )
+
 
 async def _run_live(
     bank: str,
     credential_label: str,
     bank_url: str,
     *,
-    cost_cap_usd: float = _COST_CAP_USD,
-    wallclock_cap_seconds: float = _WALLCLOCK_SECONDS,
+    har_output_path: Path | None,
 ) -> dict[str, object]:
     """Execute the MapperAgent against the live bank website.
 
@@ -196,7 +276,6 @@ async def _run_live(
     # credential_ref format: "<label>:<suffix>" (e.g. "personal:username")
     vault, _passphrase = open_vault_interactive()
     sensitive_data: dict[str, str] = {}
-    credential_ref = f"vault://{bank}/{credential_label}"
 
     with vault:
         for suffix in ("username", "password"):
@@ -210,29 +289,28 @@ async def _run_live(
                     f"[yellow]Warning: could not load credential {field_label!r}: {exc}[/yellow]"
                 )
 
-        if not sensitive_data:
-            console.print("[red]No credentials resolved from vault. Register them first:[/red]")
-            console.print(
-                f"  uv run open-banca register-credentials --bank {bank} --label {credential_label}"
-            )
-            raise typer.Exit(code=1)
-
-        agent = MapperAgent(  # type: ignore[misc]
-            start_url_map={bank: bank_url},
-            cost_cap_usd=cost_cap_usd,
-            wallclock_cap_seconds=wallclock_cap_seconds,
-            interactive=True,
-            vault=vault,
+    if not sensitive_data:
+        console.print("[red]No credentials resolved from vault. Register them first:[/red]")
+        console.print(
+            f"  uv run open-banca register-credentials --bank {bank} --label {credential_label}"
         )
+        raise typer.Exit(code=1)
 
-        console.print("[cyan]MapperAgent running — this may take up to 5 minutes...[/cyan]")
-        t_start = time.monotonic()
+    agent = MapperAgent(  # type: ignore[misc]
+        start_url_map={bank: bank_url},
+        cost_cap_usd=_COST_CAP_USD,
+        wallclock_cap_seconds=_WALLCLOCK_SECONDS,
+        har_output_path=har_output_path,
+    )
 
-        bank_map = await agent.map_bank(
-            bank_id=bank,
-            credential_ref=credential_ref,
-            sensitive_data=sensitive_data,
-        )
+    console.print("[cyan]MapperAgent running — this may take up to 5 minutes...[/cyan]")
+    t_start = time.monotonic()
+
+    bank_map = await agent.map_bank(
+        bank_id=bank,
+        credential_ref=f"vault://{bank}/{credential_label}",
+        sensitive_data=sensitive_data,
+    )
 
     elapsed = time.monotonic() - t_start
     console.print(f"[green]MapperAgent completed in {elapsed:.1f}s[/green]")
@@ -247,6 +325,9 @@ def _print_dry_run_plan(
     credential: str,
     bank_url: str,
     map_output_path: Path,
+    *,
+    har_raw_path: Path | None,
+    har_sanitized_path: Path | None,
 ) -> None:
     """Print the dry-run plan — what would be invoked without actually doing it."""
     console.print(
@@ -268,6 +349,10 @@ def _print_dry_run_plan(
     table.add_row("cost_cap_usd", f"${_COST_CAP_USD:.2f}")
     table.add_row("wallclock_cap_s", str(int(_WALLCLOCK_SECONDS)))
     table.add_row("model", "claude-sonnet-4-6 (via LiteLLM)")
+    if har_raw_path is not None:
+        table.add_row("har_raw (live)", str(har_raw_path))
+    if har_sanitized_path is not None:
+        table.add_row("har_sanitized (live)", str(har_sanitized_path))
     console.print(table)
 
     console.print("\n[bold]What would happen in live mode:[/bold]")
@@ -282,6 +367,12 @@ def _print_dry_run_plan(
         "8. Self-test: ScraperRunner dry-run validates structural correctness",
         f"9. Write validated map.json to: {map_output_path}",
     ]
+    if har_raw_path is not None:
+        steps.append(
+            f"10. Record raw HAR to {har_raw_path} (--capture-har), "
+            "sanitize to fixtures/har/sanitized/mapper_run.har (HARSanitizer), "
+            "then delete raw unless --keep-raw"
+        )
     for step in steps:
         console.print(f"  {step}")
 
@@ -289,7 +380,15 @@ def _print_dry_run_plan(
         "\n[bold]To run for real:[/bold]\n"
         "  OPEN_BANCA_LIVE_MAPPER=1 uv run open-banca run-mapper "
         f"--bank {bank} --credential {credential}"
+        + (" --capture-har" if har_raw_path is not None else "")
     )
+    if har_raw_path is None:
+        console.print(
+            "\n[dim]Optional: add --capture-har to record a raw HAR during the live run "
+            "(default path: packages/banks/<bank>/fixtures/har/raw/mapper_run.har); "
+            "after the run, a sanitized copy is written under fixtures/har/sanitized/. "
+            "Redact manually with: uv run python scripts/redact_har.py raw.har out.har[/dim]"
+        )
     console.print(
         "\n[dim]Estimated cost: <$0.50 USD. Requires: ANTHROPIC_API_KEY, "
         "Chromium (playwright install chromium), internet access to bank.[/dim]"

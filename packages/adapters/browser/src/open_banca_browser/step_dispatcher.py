@@ -1,4 +1,5 @@
 """Step dispatcher — maps action strings to executor callables."""
+
 from __future__ import annotations
 
 import inspect

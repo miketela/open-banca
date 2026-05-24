@@ -13,6 +13,7 @@ Whitelist:
 
 NO eval/exec/compile/__import__ at any point.
 """
+
 from __future__ import annotations
 
 import ast
@@ -104,7 +105,7 @@ class _SafetyVisitor(ast.NodeVisitor):
         ast.Attribute,  # prevents os.system, __class__.__bases__, etc.
         ast.Subscript,  # prevents dict["key"] injection
         ast.Starred,
-        ast.JoinedStr,   # f-strings — potential injection vector
+        ast.JoinedStr,  # f-strings — potential injection vector
     )
 
     def generic_visit(self, node: ast.AST) -> None:

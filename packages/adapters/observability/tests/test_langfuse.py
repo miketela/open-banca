@@ -2,6 +2,7 @@
 
 test_langfuse_optional: if LANGFUSE_HOST unset → no errors, no export.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,9 +19,7 @@ class TestLangfuseOptional:
         client = get_langfuse_client()
         assert client is None
 
-    def test_returns_none_when_host_is_empty_string(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_none_when_host_is_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_langfuse_client() returns None when LANGFUSE_HOST is an empty string."""
         monkeypatch.setenv("LANGFUSE_HOST", "")
         client = get_langfuse_client()
@@ -46,9 +45,7 @@ class TestLangfuseOptional:
         client = get_langfuse_client()
         flush_langfuse(client)  # client is None, must not raise
 
-    def test_langfuse_package_missing_returns_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_langfuse_package_missing_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When LANGFUSE_HOST is set but package unavailable, returns None gracefully."""
         monkeypatch.setenv("LANGFUSE_HOST", "http://localhost:3000")
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
@@ -56,6 +53,7 @@ class TestLangfuseOptional:
 
         # Simulate langfuse not installed by patching the import inside the module.
         import builtins
+
         real_import = builtins.__import__
 
         def _mock_import(name: str, *args: object, **kwargs: object) -> object:  # type: ignore[misc]

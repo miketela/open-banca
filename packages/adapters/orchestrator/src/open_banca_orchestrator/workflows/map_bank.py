@@ -49,7 +49,7 @@ class MapBankWorkflow:
     """
 
     @workflow.run
-    async def run(self, input: MapBankInput) -> MapBankResult:  # noqa: A002
+    async def run(self, input: MapBankInput) -> MapBankResult:
         """Run the MapBank workflow.
 
         SKELETON — raises NotImplementedError.
@@ -60,6 +60,4 @@ class MapBankWorkflow:
         TODO: persist generated map.json to storage (cosign-signed).
         TODO: emit map_generated webhook event.
         """
-        raise NotImplementedError(
-            "MapBankWorkflow not implemented — SKELETON, wired in task 14"
-        )
+        raise NotImplementedError("MapBankWorkflow not implemented — SKELETON, wired in task 14")

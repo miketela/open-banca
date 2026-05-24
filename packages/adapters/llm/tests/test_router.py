@@ -62,9 +62,7 @@ class TestResolveModel:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         assert resolve_model("validator") == "anthropic/claude-haiku-4-5"
 
-    def test_single_provider_fallback_anthropic_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_single_provider_fallback_anthropic_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With only ANTHROPIC_API_KEY, all agents use Claude models."""
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -76,9 +74,7 @@ class TestResolveModel:
         assert "anthropic/" in resolve_model("validator")
         assert "anthropic/" in resolve_model("judge")
 
-    def test_no_keys_raises_configuration_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_keys_raises_configuration_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """No LLM keys at all raises LLMConfigurationError."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -98,7 +94,9 @@ class TestComputeCost:
         cost = compute_cost("anthropic/claude-sonnet-4-6", input_tokens=1000, output_tokens=500)
         assert cost > Decimal("0")
 
-    def test_unknown_model_returns_zero_with_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_unknown_model_returns_zero_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """compute_cost with unknown model returns 0 and logs warning."""
         with caplog.at_level(logging.WARNING, logger="open_banca_llm.router"):
             cost = compute_cost("unknown/fake-model-xyz", input_tokens=1000, output_tokens=500)

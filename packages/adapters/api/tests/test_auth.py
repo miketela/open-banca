@@ -1,4 +1,5 @@
 """Tests for Bearer token authentication."""
+
 from __future__ import annotations
 
 import pytest
@@ -29,7 +30,9 @@ def test_wrong_token_returns_401(client: TestClient, method: str, path: str) -> 
 
 
 @pytest.mark.parametrize("method,path", _PROTECTED_PATHS)
-def test_valid_token_not_401(client: TestClient, auth_headers: dict[str, str], method: str, path: str) -> None:
+def test_valid_token_not_401(
+    client: TestClient, auth_headers: dict[str, str], method: str, path: str
+) -> None:
     """Endpoints with correct Bearer token must NOT return 401."""
     response = client.request(method, path, headers=auth_headers)
     assert response.status_code != 401

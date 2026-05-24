@@ -49,7 +49,7 @@ class NavigateActivity:
 
 
 @activity.defn(name="NavigateActivity")
-async def navigate(input: NavigateInput) -> NavigateResult:  # noqa: A002
+async def navigate(input: NavigateInput) -> NavigateResult:
     """Navigate to the account transaction page using map.json step definitions.
 
     Sends heartbeats every 5 s on long steps to prevent heartbeat timeout.

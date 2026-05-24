@@ -93,9 +93,7 @@ class TemporalOrchestratorAdapter:
             ScrapeMode,
         )
 
-        temporal_mode = (
-            ScrapeMode.full_historical if mode == "full" else ScrapeMode.incremental
-        )
+        temporal_mode = ScrapeMode.full_historical if mode == "full" else ScrapeMode.incremental
         input_ = ScrapeJobInput(
             job_id=job_id,
             bank_id=bank_id,
@@ -266,6 +264,7 @@ def get_storage_connection() -> object:
 
     try:
         from open_banca_storage.kdf import Argon2idKeyDerivation
+
         kdf = Argon2idKeyDerivation()
     except Exception:
         kdf = PassthroughKeyDerivation()  # type: ignore[assignment]

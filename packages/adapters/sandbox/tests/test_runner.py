@@ -18,6 +18,7 @@ Test matrix:
 - test_ipc_none               : IpcMode == "none"
 - test_network_is_internal    : network create payload has Internal == True
 """
+
 from __future__ import annotations
 
 import json
@@ -120,9 +121,7 @@ def _setup_happy_path(
     router.post(_containers_create_url()).mock(
         return_value=httpx.Response(201, json={"Id": cid, "Warnings": []})
     )
-    router.post(_containers_start_url(cid)).mock(
-        return_value=httpx.Response(204)
-    )
+    router.post(_containers_start_url(cid)).mock(return_value=httpx.Response(204))
     router.get(_containers_inspect_url(cid)).mock(
         return_value=httpx.Response(200, json=_inspect_response(cid, network_name))
     )
@@ -133,7 +132,9 @@ def _setup_happy_path(
 # ===========================================================================
 
 
-def test_spawn_config_sends_to_proxy(mock_router: respx.MockRouter, runner: DockerSandboxRunner) -> None:
+def test_spawn_config_sends_to_proxy(
+    mock_router: respx.MockRouter, runner: DockerSandboxRunner
+) -> None:
     """spawn() must send requests exclusively to the docker-socket-proxy URL."""
     network_name = f"sandbox-{_JOB_ID}"
     _setup_happy_path(mock_router)
@@ -146,7 +147,9 @@ def test_spawn_config_sends_to_proxy(mock_router: respx.MockRouter, runner: Dock
     assert token.container_id == _CONTAINER_ID
 
 
-def test_spawn_config_hardening_flags(mock_router: respx.MockRouter, runner: DockerSandboxRunner) -> None:
+def test_spawn_config_hardening_flags(
+    mock_router: respx.MockRouter, runner: DockerSandboxRunner
+) -> None:
     """spawn() must set all security-hardening fields in the create payload."""
     network_name = f"sandbox-{_JOB_ID}"
     captured: dict = {}  # type: ignore[type-arg]
@@ -195,8 +198,10 @@ def test_resource_limits(mock_router: respx.MockRouter, runner: DockerSandboxRun
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -226,8 +231,10 @@ def test_caps_drop(mock_router: respx.MockRouter, runner: DockerSandboxRunner) -
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -252,8 +259,10 @@ def test_no_privileged(mock_router: respx.MockRouter, runner: DockerSandboxRunne
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -281,8 +290,10 @@ def test_readonly_rootfs(mock_router: respx.MockRouter, runner: DockerSandboxRun
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -302,8 +313,10 @@ def test_tmpfs_mounts(mock_router: respx.MockRouter, runner: DockerSandboxRunner
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -333,8 +346,10 @@ def test_nonroot_user(mock_router: respx.MockRouter, runner: DockerSandboxRunner
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -359,8 +374,10 @@ def test_no_secrets_in_env(mock_router: respx.MockRouter, runner: DockerSandboxR
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -388,7 +405,9 @@ def test_no_secrets_in_env(mock_router: respx.MockRouter, runner: DockerSandboxR
 # ===========================================================================
 
 
-def test_network_allowlist_labels(mock_router: respx.MockRouter, runner: DockerSandboxRunner) -> None:
+def test_network_allowlist_labels(
+    mock_router: respx.MockRouter, runner: DockerSandboxRunner
+) -> None:
     """Container labels must include banco_general's allowed domains."""
     network_name = f"sandbox-{_JOB_ID}"
     captured: dict = {}  # type: ignore[type-arg]
@@ -397,8 +416,10 @@ def test_network_allowlist_labels(mock_router: respx.MockRouter, runner: DockerS
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -450,8 +471,10 @@ def test_ipc_none(mock_router: respx.MockRouter, runner: DockerSandboxRunner) ->
         return_value=httpx.Response(201, json={"Id": _NETWORK_ID})
     )
     mock_router.post(_containers_create_url()).mock(
-        side_effect=lambda req: (captured.update(json.loads(req.content)) or None)
-        or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        side_effect=lambda req: (
+            (captured.update(json.loads(req.content)) or None)
+            or httpx.Response(201, json={"Id": _CONTAINER_ID})
+        )
     )
     mock_router.post(_containers_start_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.get(_containers_inspect_url(_CONTAINER_ID)).mock(
@@ -525,9 +548,7 @@ def test_kill_lifecycle(mock_router: respx.MockRouter, runner: DockerSandboxRunn
     delete_route = mock_router.delete(_containers_delete_url(_CONTAINER_ID)).mock(
         return_value=httpx.Response(204)
     )
-    mock_router.delete(_networks_delete_url(network_name)).mock(
-        return_value=httpx.Response(204)
-    )
+    mock_router.delete(_networks_delete_url(network_name)).mock(return_value=httpx.Response(204))
 
     token = runner.spawn(_JOB_ID, _BANK_ID)
     runner.kill(token)
@@ -546,12 +567,8 @@ def test_kill_with_already_stopped_container(
     mock_router.post(_containers_stop_url(_CONTAINER_ID)).mock(
         return_value=httpx.Response(304)  # already stopped
     )
-    mock_router.delete(_containers_delete_url(_CONTAINER_ID)).mock(
-        return_value=httpx.Response(204)
-    )
-    mock_router.delete(_networks_delete_url(network_name)).mock(
-        return_value=httpx.Response(204)
-    )
+    mock_router.delete(_containers_delete_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
+    mock_router.delete(_networks_delete_url(network_name)).mock(return_value=httpx.Response(204))
 
     token = runner.spawn(_JOB_ID, _BANK_ID)
     runner.kill(token)  # must not raise
@@ -564,15 +581,11 @@ def test_kill_raises_on_delete_failure(
     network_name = f"sandbox-{_JOB_ID}"
     _setup_happy_path(mock_router)
 
-    mock_router.post(_containers_stop_url(_CONTAINER_ID)).mock(
-        return_value=httpx.Response(204)
-    )
+    mock_router.post(_containers_stop_url(_CONTAINER_ID)).mock(return_value=httpx.Response(204))
     mock_router.delete(_containers_delete_url(_CONTAINER_ID)).mock(
         return_value=httpx.Response(500, text="Internal Server Error")
     )
-    mock_router.delete(_networks_delete_url(network_name)).mock(
-        return_value=httpx.Response(204)
-    )
+    mock_router.delete(_networks_delete_url(network_name)).mock(return_value=httpx.Response(204))
 
     token = runner.spawn(_JOB_ID, _BANK_ID)
     with pytest.raises(SandboxKillError):
@@ -604,10 +617,7 @@ def test_socket_proxy_only() -> None:
 def test_socket_proxy_only_default_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default URL sourced from DOCKER_HOST env must also be HTTP-based."""
     monkeypatch.setenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
-    # Re-import to trigger module-level constant re-evaluation via constructor default
-    from open_banca_sandbox import runner as runner_mod
-
-    r = DockerSandboxRunner(proxy_url=runner_mod._DEFAULT_PROXY_URL)
+    r = DockerSandboxRunner()
     assert r._base_url.startswith("http://")
     assert "docker.sock" not in r._base_url
     r.close()
@@ -675,8 +685,6 @@ def test_integration_real_spawn_and_kill() -> None:
 
     r.kill(token)
     # Verify container is gone
-    resp = r._client.get(
-        f"/{_DOCKER_API_VERSION}/containers/{token.container_id}/json"
-    )
+    resp = r._client.get(f"/{_DOCKER_API_VERSION}/containers/{token.container_id}/json")
     assert resp.status_code == 404, "Container should be removed after kill()"
     r.close()

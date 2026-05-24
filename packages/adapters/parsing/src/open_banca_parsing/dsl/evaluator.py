@@ -7,6 +7,7 @@ The evaluator operates on AST nodes produced by safety.verify_expression(),
 which has already guaranteed the tree contains only whitelisted helpers
 with constant arguments.
 """
+
 from __future__ import annotations
 
 import ast
@@ -32,7 +33,11 @@ def _eval_node(node: ast.expr) -> Any:
     if isinstance(node, ast.List):
         return [_eval_node(el) for el in node.elts]
     if isinstance(node, ast.Dict):
-        return {_eval_node(k): _eval_node(v) for k, v in zip(node.keys, node.values, strict=False) if k is not None}
+        return {
+            _eval_node(k): _eval_node(v)
+            for k, v in zip(node.keys, node.values, strict=False)
+            if k is not None
+        }
     if isinstance(node, ast.Tuple):
         return tuple(_eval_node(el) for el in node.elts)
     msg = f"Evaluator: unexpected node type {type(node).__name__!r} — safety check should have caught this."
@@ -128,7 +133,9 @@ def apply_expression(source: str, cell_value: str) -> Any:
     tree = verify_expression(src)
 
     if not isinstance(tree.body, ast.Call):
-        msg = f"apply_expression: expression must be a helper call, got {type(tree.body).__name__!r}"
+        msg = (
+            f"apply_expression: expression must be a helper call, got {type(tree.body).__name__!r}"
+        )
         raise EvaluationError(msg)
 
     name, args, kwargs = evaluate_call(tree.body)
