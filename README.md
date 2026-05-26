@@ -107,6 +107,10 @@ curl -X POST http://localhost:8080/scrape \
 
 Para detalles completos: [`docs/05-operations/deployment.md`](./docs/05-operations/deployment.md).
 
+### Probar la API (curl, auth, scrape, webhooks)
+
+Guía paso a paso: **[`README-API.md`](./README-API.md)**.
+
 ---
 
 ## Lectura recomendada
